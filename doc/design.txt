@@ -1,0 +1,20 @@
+- share shotwell photo database directly from read-only folder
+  and read-only sqlite database (or a copy).
+- set viewing permissions based on event; this info is stored
+  in a separate database. 
+- password protected login
+- builtin webserver to run as single binary
+- C++ using libmongoose http://cesanta.com/libmongoose.shtml
+  or maybe the more recent and proper C++ SimpleWebServer,
+  https://github.com/burner/Simple-Web-Server
+
+
+
+
+shotwell tables:
+
+EventTable:
+  id
+  name
+  primary_photo_id
+  comment
