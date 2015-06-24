@@ -25,8 +25,12 @@ class Database {
 		};
 		std::vector<Event> get_events();
 
-		// The following set filters on the indicated event.
-		void select_event(int event_num);
+		// Retrieve a list of all photos in an event.
+		class Photo {
+			public:
+				std::string filename;
+		};
+		std::vector<Photo> get_photos(int event_id);
 
 	private:
 		sqlite3 *db;
