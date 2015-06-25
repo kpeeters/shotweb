@@ -1,0 +1,19 @@
+body {
+	 font-family: sans;
+}
+div#screen {
+	 text-align: center;
+}
+h1 { 
+	 display: inline;
+}
+table {
+	 margin-top: 40px;
+}
+div#login { 
+	 margin-top: 80px;
+	 padding: 20px;
+	 box-shadow: 0px 0px 8px grey;
+	 display: inline-block;
+	 text-align: center;
+}
