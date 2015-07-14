@@ -1,3 +1,6 @@
+
+// Serialise a FORM into a JSON object.
+
 $.fn.serializeObject = function()
 {
    var o = {};
@@ -15,11 +18,17 @@ $.fn.serializeObject = function()
    return o;
 };
 
+
+// Main entry.
+
 $(document).ready( function() {
 
 	 $(document).on("submit", "form", function(event) {
-		  event.preventDefault();        
-		  var mydata = JSON.stringify($('form').serializeObject());
+		  event.preventDefault();     
+		  // Convert the form to an key-value object and add the action.
+		  var formobj = $('form').serializeObject();
+		  formobj["action"]="login";
+		  var mydata = JSON.stringify(formobj);
 		  $.ajax({
 				url: $(this).attr("action"),
 				type: "POST",
@@ -31,8 +40,10 @@ $(document).ready( function() {
 				{
 					 if(data["status"]=="error")
 						  alert('not allowed!');
-					 else 
-						  alert('ok');
+					 else {
+						  $("#login_segment").hide();
+						  window.location.href="events.html";
+					 }
 				},
 				error: function (xhr, desc, err)
 				{

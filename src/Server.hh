@@ -4,6 +4,7 @@
 #pragma once
 
 #include "server_http.hpp"
+#include "Database.hh"
 
 namespace sw = SimpleWeb;
 
@@ -16,6 +17,10 @@ class Server {
 	private:
 		sw::Server<sw::HTTP> server;
 		
-		void handle_authenticate(std::ostream& response, std::shared_ptr<sw::Request> request);
+		void handle_json(std::ostream& response, std::shared_ptr<sw::Request> request);
 		void handle_default(std::ostream& response, std::shared_ptr<sw::Request> request);
+		void send_thumbnail(std::ostream& response, const std::string& fn, int max_size) const;
+
+		Database db;
+		std::vector<Database::Event> events;
 };

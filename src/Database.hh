@@ -21,16 +21,21 @@ class Database {
 			public:
 				int         id;
 				std::string name;
+				std::string primary_photo_filename;
+				std::string primary_source_id;
 				std::string comment;
 		};
-		std::vector<Event> get_events();
+		std::vector<Event> get_events(int event_id=-1);
+		Event              get_event(int event_id);
 
 		// Retrieve a list of all photos in an event.
 		class Photo {
 			public:
+				int         id;
 				std::string filename;
 		};
 		std::vector<Photo> get_photos(int event_id);
+		Photo              get_photo(int photo_id);
 
 	private:
 		sqlite3 *db;

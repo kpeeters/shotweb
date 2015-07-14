@@ -20,12 +20,32 @@ Database::~Database()
 		}
 	}
 
-std::vector<Database::Event> Database::get_events()
+Database::Event Database::get_event(int event_id) 
+	{
+	auto events=get_events(event_id);
+	if(events.size()>0) return events[0];
+	else throw std::range_error("Event id "+std::to_string(event_id)+" does not exist");
+	}
+
+std::vector<Database::Event> Database::get_events(int event_id)
 	{
 	std::vector<Database::Event> results;
 
 	sqlite3_stmt *statement=0;
-	std::string query = "select id,name,comment from EventTable";
+	std::ostringstream ss;
+
+	// The following query produces the correct list of event thumbnails, but they are not
+	// yet sorted in the order of the first photo in the event. Rather, they are sorted in
+	// the order of which the events were created, which is rather arbitrary.
+
+	ss << "select distinct EventTable.id,name,EventTable.comment,EventTable.primary_source_id from EventTable";
+	ss << " join PhotoTable on (EventTable.id=event_id) ";
+	if(event_id>0) {
+		ss << " where EventTable.id='" << event_id << "'";
+		}
+	ss << " order by PhotoTable.timestamp desc";
+	std::string query = ss.str();
+	std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
 	if(ret!=SQLITE_OK) {
 		throw std::logic_error("Error preparing query");
@@ -41,6 +61,14 @@ std::vector<Database::Event> Database::get_events()
 					}
 				int id = sqlite3_column_int(statement, 0);
 				event.id=id;
+//				if(sqlite3_column_type(statement, 3)==SQLITE_TEXT) {
+//					const unsigned char *filename = sqlite3_column_text(statement, 3);
+//					event.primary_photo_filename=reinterpret_cast<const char*>(filename);
+//					}
+				if(sqlite3_column_type(statement, 3)==SQLITE_TEXT) {
+					const unsigned char *filename = sqlite3_column_text(statement, 3);
+					event.primary_source_id=reinterpret_cast<const char*>(filename);
+					}
 				results.push_back(event);
 				break;
 				}
@@ -63,6 +91,46 @@ std::vector<Database::Event> Database::get_events()
 	return results;
 	}
 
+Database::Photo Database::get_photo(int photo_id) 
+	{
+	sqlite3_stmt *statement=0;
+	std::ostringstream ss;
+	ss << "select id,filename from PhotoTable where id='" << photo_id << "'";
+	std::string query = ss.str();
+	std::cout << query << std::endl;
+	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
+	if(ret!=SQLITE_OK) {
+		throw std::logic_error("Error preparing query");
+		}
+	Photo photo;
+	while(true) {
+		ret = sqlite3_step(statement);
+		switch(ret) {
+			case SQLITE_ROW: {
+				photo.id=sqlite3_column_int(statement, 0);
+				if(sqlite3_column_type(statement, 1)==SQLITE_TEXT) {
+					const unsigned char *name = sqlite3_column_text(statement, 1);
+					photo.filename=reinterpret_cast<const char*>(name);
+					}
+				break;
+				}
+			case SQLITE_DONE:
+				sqlite3_finalize(statement);
+				return photo;
+			case SQLITE_ERROR:
+			case SQLITE_MISUSE:
+			case SQLITE_BUSY: {
+				int errcode = sqlite3_errcode(db);
+				std::string errmsg = sqlite3_errstr(errcode);
+				sqlite3_finalize(statement);
+				throw std::logic_error(errmsg);
+				}
+			default:
+				throw std::logic_error("Failed to execute query");
+			}
+		} 
+	}
+
 
 std::vector<Database::Photo> Database::get_photos(int event_id)
 	{
@@ -70,7 +138,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select filename from PhotoTable where event_id='" << event_id << "'";
+	ss << "select id,filename from PhotoTable where event_id='" << event_id << "'";
 	std::string query = ss.str();
 	std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
@@ -82,8 +150,9 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 		switch(ret) {
 			case SQLITE_ROW: {
 				Photo photo;
-				if(sqlite3_column_type(statement, 0)==SQLITE_TEXT) {
-					const unsigned char *name = sqlite3_column_text(statement, 0);
+				photo.id=sqlite3_column_int(statement, 0);
+				if(sqlite3_column_type(statement, 1)==SQLITE_TEXT) {
+					const unsigned char *name = sqlite3_column_text(statement, 1);
 					photo.filename=reinterpret_cast<const char*>(name);
 					}
 				results.push_back(photo);

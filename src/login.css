@@ -1,7 +1,7 @@
 body {
 	 font-family: sans;
 }
-div#screen {
+div.screen {
 	 text-align: center;
 }
 h1 { 
@@ -16,4 +16,52 @@ div#login {
 	 box-shadow: 0px 0px 8px grey;
 	 display: inline-block;
 	 text-align: center;
+}
+
+div.event {
+	 display: inline-block;
+	 height: 340px;
+	 width: 300px;
+	 margin-left: 10px;
+	 margin-right: 10px;
+	 margin-bottom: 5px;
+	 background: white;
+}
+div.event_title {
+	 margin-top: 10px;
+}
+div.event a {
+	 text-decoration: none;
+}
+div.event a:hover {
+	 color: red;
+}
+div.event img {
+	 width: 100%;
+	 vertical-align: top;
+	 background: white;
+}
+
+div.photo {
+	 display: inline-block;
+	 height: 340px;
+	 width: 300px;
+	 margin-left: 10px;
+	 margin-right: 10px;
+	 margin-bottom: 5px;
+	 background: white;
+}
+div.photo_title {
+	 margin-top: 10px;
+}
+div.photo a {
+	 text-decoration: none;
+}
+div.photo a:hover {
+	 color: red;
+}
+div.photo img {
+	 width: 100%;
+	 vertical-align: top;
+	 background: white;
 }
