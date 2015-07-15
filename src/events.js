@@ -16,7 +16,8 @@ var fill_event_display = function(data) {
 									 +"</div>");
 	 });
 	 $(".lazy").lazyload({
-		  effect: "fadeIn"
+		  effect: "fadeIn",
+		  cache: true
 	 });
 };
 
