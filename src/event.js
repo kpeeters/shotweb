@@ -18,7 +18,15 @@ var fill_event_display = function(data) {
 		  container: $("#app"),
 		  effect: "fadeIn"
 	 });
-	 $(".fancybox").fancybox();
+	 $(".fancybox").fancybox( {
+		  helpers : {
+				overlay : {
+					 css : {
+						  'background' : 'rgba(100,100,100,0.5)'
+					 }
+				}
+		  }
+    });
 };
 
 // Load a list of photos in an event and generate placeholder divs for
