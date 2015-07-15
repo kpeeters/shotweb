@@ -95,9 +95,9 @@ Database::Photo Database::get_photo(int photo_id)
 	{
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select id,filename from PhotoTable where id='" << photo_id << "'";
+	ss << "select id,filename,orientation from PhotoTable where id='" << photo_id << "'";
 	std::string query = ss.str();
-	std::cout << query << std::endl;
+	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
 	if(ret!=SQLITE_OK) {
 		throw std::logic_error("Error preparing query");
@@ -112,6 +112,7 @@ Database::Photo Database::get_photo(int photo_id)
 					const unsigned char *name = sqlite3_column_text(statement, 1);
 					photo.filename=reinterpret_cast<const char*>(name);
 					}
+				photo.orientation=sqlite3_column_int(statement, 2);
 				break;
 				}
 			case SQLITE_DONE:
@@ -138,9 +139,9 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select id,filename from PhotoTable where event_id='" << event_id << "'";
+	ss << "select id,filename,orientation from PhotoTable where event_id='" << event_id << "'";
 	std::string query = ss.str();
-	std::cout << query << std::endl;
+	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
 	if(ret!=SQLITE_OK) {
 		throw std::logic_error("Error preparing query");
@@ -155,6 +156,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 					const unsigned char *name = sqlite3_column_text(statement, 1);
 					photo.filename=reinterpret_cast<const char*>(name);
 					}
+				photo.orientation=sqlite3_column_int(statement, 2);
 				results.push_back(photo);
 				break;
 				}

@@ -8,7 +8,7 @@ var fill_event_display = function(data) {
 		  if(this["event"]=="")
 				this["event"]="&nbsp;";
 		  $("#event").append("<div class='photo'>"
-									 +"<a href='photo.html?id="+this["id"]+"'>"
+									 +"<a class='fancybox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
 									 +"<img width=200 class='lazy' data-original='photo_thumbnail_"
 									 +this["id"]+"' />"
 									 +"</a>"
@@ -18,6 +18,7 @@ var fill_event_display = function(data) {
 		  container: $("#app"),
 		  effect: "fadeIn"
 	 });
+	 $(".fancybox").fancybox();
 };
 
 // Load a list of photos in an event and generate placeholder divs for
@@ -38,7 +39,8 @@ var load_photos = function(event_id) {
 		  contentType: "application/json",
 		  success: function (data, status)
 		  {
-				fill_event_display(data);
+				$("#event_header").html(data["name"]);
+				fill_event_display(data["photos"]);
 		  },
 		  error: function (xhr, desc, err)
 		  {

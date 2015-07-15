@@ -33,6 +33,7 @@ class Database {
 			public:
 				int         id;
 				std::string filename;
+				int         orientation;
 		};
 		std::vector<Photo> get_photos(int event_id);
 		Photo              get_photo(int photo_id);
