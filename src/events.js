@@ -16,6 +16,7 @@ var fill_event_display = function(data) {
 									 +"</div>");
 	 });
 	 $(".lazy").lazyload({
+		  container: $("#app"),
 		  effect: "fadeIn",
 		  cache: true
 	 });
@@ -37,6 +38,8 @@ var load_events = function() {
 		  contentType: "application/json",
 		  success: function (data, status)
 		  {
+				if(data.length==0)
+					 window.location.href="login.html";
 				fill_event_display(data);
 		  },
 		  error: function (xhr, desc, err)
@@ -49,4 +52,11 @@ var load_events = function() {
 
 $(document).ready( function() {
 	 load_events();
+
+	 $("#fullscreen").on('click', function(e) {
+		  e.preventDefault();
+		  // http://www.sitepoint.com/html5-full-screen-api/
+		  document.getElementById("html").webkitRequestFullScreen();
+		  $("#fullscreen").hide();
+	 });
 });

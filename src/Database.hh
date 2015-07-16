@@ -34,6 +34,7 @@ class Database {
 				int         id;
 				std::string filename;
 				int         orientation;
+				int         event_id;
 		};
 		std::vector<Photo> get_photos(int event_id);
 		Photo              get_photo(int photo_id);

@@ -12,6 +12,28 @@ find_package(Boost 1.45.0 COMPONENTS system )
 
 
 add_executable(test_database test_database.cc Database.cc)
-add_executable(test_server test_server.cc Server.cc Database.cc)
+add_executable(shotweb test_server.cc Server.cc Database.cc)
 target_link_libraries(test_database sqlite3)
-target_link_libraries(test_server pthread ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS})
+target_link_libraries(shotweb pthread ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS})
+
+set(HTML_CSS_JS
+  login.html
+  login.css
+  login.js
+  events.html
+  events.js
+  event.html
+  event.js
+  denied.html
+  jquery.lazyload.js
+  fullscreen.png
+)
+FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/fancybox/*.png" 
+                   "${PROJECT_SOURCE_DIR}/fancybox/*.css" 
+                   "${PROJECT_SOURCE_DIR}/fancybox/*.js")
+FILE(GLOB FANCYBOX_HELPERS "${PROJECT_SOURCE_DIR}/fancybox/helpers/*")
+
+install(PROGRAMS ${PROJECT_BINARY_DIR}/shotweb DESTINATION bin)
+install(FILES ${HTML_CSS_JS}      DESTINATION share/shotweb)
+install(FILES ${FANCYBOX}         DESTINATION share/shotweb/fancybox)
+install(FILES ${FANCYBOX_HELPERS} DESTINATION share/shotweb/fancybox/helpers)

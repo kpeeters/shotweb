@@ -31,6 +31,7 @@ class Server {
 			public:
 				std::string      name;
 				std::string      password;
+				bool             root;
 				std::vector<int> events;
 		};
 		typedef std::string Token;
@@ -50,6 +51,15 @@ class Server {
 		// Extract the authorisation token from the HTTP request header, if any.
 		std::string extract_token(std::shared_ptr<sw::Request> request);
 
+		// Send an access denied page and log the request.
+		void        denied(std::ostream& response, std::shared_ptr<sw::Request> request);
+
 		Database db;
 		std::vector<Database::Event> events;
+
+		// Path to the html, css and javascrpipt files.
+		std::string htmlpath;
+
+		// Path to the thumbnail cache.
+		std::string cachepath;
 };

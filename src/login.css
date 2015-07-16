@@ -43,7 +43,27 @@ div#controls img {
 	 float: right;
 	 margin-right: 20px;
 }
+#fullscreen {
+	 display: none;
+}
+div#events_segment {
+	 margin-top: 60px;
+}
+div#event_segment {
+	 margin-top: 60px;
+}
+div#event {
+	 text-align: center;
+}
+div#events {
+	 text-align: center;
+}
 span#event_header {
+	 vertical-align: middle;
+	 font-size: 25px;
+	 width: 100%;
+}
+span#events_header {
 	 vertical-align: middle;
 	 font-size: 25px;
 	 width: 100%;

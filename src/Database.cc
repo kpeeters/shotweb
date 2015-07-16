@@ -95,7 +95,7 @@ Database::Photo Database::get_photo(int photo_id)
 	{
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select id,filename,orientation from PhotoTable where id='" << photo_id << "'";
+	ss << "select id,filename,orientation,event_id from PhotoTable where id='" << photo_id << "'";
 	std::string query = ss.str();
 	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
@@ -113,6 +113,7 @@ Database::Photo Database::get_photo(int photo_id)
 					photo.filename=reinterpret_cast<const char*>(name);
 					}
 				photo.orientation=sqlite3_column_int(statement, 2);
+				photo.event_id=sqlite3_column_int(statement, 3);
 				break;
 				}
 			case SQLITE_DONE:
@@ -139,7 +140,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select id,filename,orientation from PhotoTable where event_id='" << event_id << "'";
+	ss << "select id,filename,orientation,event_id from PhotoTable where event_id='" << event_id << "'";
 	std::string query = ss.str();
 	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
@@ -157,6 +158,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 					photo.filename=reinterpret_cast<const char*>(name);
 					}
 				photo.orientation=sqlite3_column_int(statement, 2);
+				photo.event_id=sqlite3_column_int(statement, 3);
 				results.push_back(photo);
 				break;
 				}
