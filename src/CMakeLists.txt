@@ -8,7 +8,7 @@ endif()
 
 find_package(OpenCV REQUIRED)
 find_library(sqlite3 sqlite3 required)
-find_package(Boost 1.45.0 COMPONENTS system)
+find_package(Boost 1.45.0 COMPONENTS system )
 
 
 add_executable(test_database test_database.cc Database.cc)
