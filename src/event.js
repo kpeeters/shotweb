@@ -15,18 +15,38 @@ var fill_event_display = function(data) {
 									 +"</div>");
 	 });
 	 $(".lazy").lazyload({
-		  container: $("#app"),
-		  effect: "fadeIn"
+		  effect: "fadeIn",
+		  container: $("#event_segment")
 	 });
-	 $(".fancybox").fancybox( {
-		  helpers : {
-				overlay : {
-					 css : {
-						  'background' : 'rgba(100,100,100,0.5)'
-					 }
-				}
+	 $(".fancybox").on('click', function(ev) {
+		  ev.preventDefault();
+		  var next_photo = $(this).parent().next().find("a");
+		  console.log(next_photo);
+		  var img=$(this).attr('href');
+		  $("#singel_shot img").unbind('load');
+		  $("#single_shot img").bind('load', function() {
+				$("#single_shot").show();
+				$("#single_shot").css({'z-index': 2});
+				$("#single_shot").animate({
+					 opacity: 1.0
+					 }, 500, "linear");
+				
+		  });
+		  $("#single_shot img").attr('src', img);
+	 });
+	 $(document).keyup(function(e) {
+		  if(e.keyCode == 27) {
+				var width=$(window).width();
+				$("#single_shot").animate({ 
+					 left: -width,
+					 right: width,
+					 opacity: 0,
+				}, 500, "linear", function() {
+					 $("#single_shot").hide();
+					 $("#single_shot").css({'z-index': -2, left: 0, right: 0});
+				});
 		  }
-    });
+	 });
 };
 
 // Load a list of photos in an event and generate placeholder divs for

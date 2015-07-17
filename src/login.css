@@ -9,7 +9,7 @@ div#app {
 	 bottom: 0;
 	 left: 0;
 	 right: 0;
-	 overflow-y: auto;
+	 z-index: -2;
 }
 div.screen {
 	 text-align: center;
@@ -43,14 +43,69 @@ div#controls img {
 	 float: right;
 	 margin-right: 20px;
 }
+.expander {
+    position: absolute;
+    top: 5px;
+    left: 5px;
+    width: 16px;
+    height: 16px;
+    padding: 4px;
+    background: red;
+    z-index: 99999;   
+    cursor: pointer;
+}
 #fullscreen {
 	 display: none;
 }
 div#events_segment {
-	 margin-top: 60px;
+	 position: absolute;
+	 top:0;
+	 bottom: 0;
+	 left: 0;
+	 right: 0;
+	 padding-top: 60px;
+	 overflow-y: auto;
+	 z-index: -1;
 }
 div#event_segment {
-	 margin-top: 60px;
+	 position: absolute;
+	 top:0;
+	 bottom: 0;
+	 left: 0;
+	 right: 0;
+	 padding-top: 60px;
+	 overflow-y: auto;
+	 z-index: -1;
+}
+div#single_shot {
+	 position: absolute;
+	 top:0;
+	 bottom: 0;
+	 left: 0;
+	 right: 0;
+	 z-index: -2;
+	 overflow: hidden;
+	 white-space: nowrap;
+	 background: white;
+	 text-align: center;
+	 opacity: 0;
+}
+div#align_helper {
+	 display: inline-block;
+	 width: 0px;
+	 margin: 0;
+	 padding: 0;
+	 height: 100%;
+	 vertical-align: middle;
+}
+div#single_shot img {
+	 margin: 0;
+	 padding: 0;
+	 display: inline-block;
+	 max-width: 100%;
+	 max-height: 100%;
+	 vertical-align: middle;
+	 box-shadow: 1px 1px 6px grey;
 }
 div#event {
 	 text-align: center;
