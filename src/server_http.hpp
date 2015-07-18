@@ -2,75 +2,192 @@
 #define	SERVER_HTTP_HPP
 
 #include <boost/asio.hpp>
+#include <boost/asio/spawn.hpp>
 
 #include <regex>
 #include <unordered_map>
 #include <thread>
+#include <functional>
 #include <iostream>
-#include <limits>
-
-#include "request.hpp"
-#include "request_parser.hpp"
 
 namespace SimpleWeb {
-	inline long safeSizetToLong(const size_t value) {
-		if(value > std::numeric_limits<long>::max()) {
-			throw std::range_error("failed to convert size_t to long");
-		}
-		
-		return static_cast<long>(value);
-	}
-
-	typedef std::function<void(std::ostream&, std::shared_ptr<Request>)> 
-		Function;
-
-	enum class CallbackType {
-		POST,
-		GET,
-		INVALID
-	};
-
-	struct Callback {
-		CallbackType type;
-		Function functions[2];
-
-		inline Callback() : type(CallbackType::INVALID) {}
-		inline Callback(CallbackType ct, Function func) : type(ct) {
-			functions[static_cast<size_t>(ct)] = func;
-		}
-	};
-
     template <class socket_type>
     class ServerBase {
     public:
-        typedef std::map<std::string, Callback> ResourceMap;
-
-		typedef std::vector<std::pair<std::string, Callback>> ResourceVec;
-
-        ResourceMap resource_map;
-        ResourceVec resource_vec;
-        Callback default_resource;
-        
-        inline void start() {
-            all_resources.clear();
-            for(auto it = resource_map.begin(); it != resource_map.end(); 
-					++it) 
-			{
-                all_resources.push_back(it);
-            }
-            accept();            
+        class Response {
+            friend class ServerBase<socket_type>;
+        private:
+            std::shared_ptr<boost::asio::strand> strand;
             
-            //If num_threads>1, start m_io_service.run() in (num_threads-1) 
-			//threads for thread-pooling
+            boost::asio::yield_context& yield;
+            
+            boost::asio::streambuf streambuf;
+
+            std::shared_ptr<socket_type> socket;
+            
+            std::shared_ptr<boost::asio::deadline_timer> async_timer;
+            
+            std::shared_ptr<bool> async_writing;
+            std::shared_ptr<bool> async_waiting;
+
+            Response(boost::asio::io_service& io_service, std::shared_ptr<socket_type> socket, std::shared_ptr<boost::asio::strand> strand, 
+                    boost::asio::yield_context& yield): 
+                    strand(strand), yield(yield), socket(socket), async_timer(new boost::asio::deadline_timer(io_service)), 
+                    async_writing(new bool(false)), async_waiting(new bool(false)), stream(&streambuf) {}
+
+            void async_flush(std::function<void(const boost::system::error_code&)> callback=nullptr) {
+                if(!callback && !socket->lowest_layer().is_open()) {
+                    if(*async_waiting)
+                        async_timer->cancel();
+                    throw std::runtime_error("Broken pipe.");
+                }
+                
+                std::shared_ptr<boost::asio::streambuf> write_buffer(new boost::asio::streambuf);
+                std::ostream response(write_buffer.get());
+                response << stream.rdbuf();
+                                                    
+                //Wait until previous async_flush is finished
+                strand->dispatch([this](){
+                    if(*async_writing) {
+                        *async_waiting=true;
+                        try {
+                            async_timer->async_wait(yield);
+                        }
+                        catch(std::exception& e) {
+                        }
+                        *async_waiting=false;
+                    }
+                });
+
+                *async_writing=true;
+                
+                auto socket_=this->socket;
+                auto async_writing_=this->async_writing;
+                auto async_timer_=this->async_timer;
+                auto async_waiting_=this->async_waiting;
+                
+                boost::asio::async_write(*socket, *write_buffer, 
+                        strand->wrap([socket_, write_buffer, callback, async_writing_, async_timer_, async_waiting_]
+                        (const boost::system::error_code& ec, size_t /*bytes_transferred*/) {
+                    *async_writing_=false;
+                    if(*async_waiting_)
+                        async_timer_->cancel();
+                    if(callback)
+                        callback(ec);
+                }));
+            }
+            
+            void flush() {
+                boost::asio::streambuf write_buffer;
+                std::ostream response(&write_buffer);
+                response << stream.rdbuf();
+
+                boost::asio::async_write(*socket, write_buffer, yield);
+            }
+                        
+        public:
+            std::ostream stream;
+            
+            template <class T>
+            Response& operator<<(const T& t) {
+                stream << t;
+                return *this;
+            }
+
+            Response& operator<<(std::ostream& (*manip)(std::ostream&)) {
+                stream << manip;
+                return *this;
+            }
+            
+            Response& operator<<(Response& (*manip)(Response&)) {
+                return manip(*this);
+            }
+        };
+        
+        static Response& async_flush(Response& r) {
+            r.async_flush();
+            return r;
+        }
+        
+        static Response& flush(Response& r) {
+            r.flush();
+            return r;
+        }
+        
+        class Request {
+            friend class ServerBase<socket_type>;
+        public:
+            std::string method, path, http_version;
+
+            std::istream content;
+
+            std::unordered_multimap<std::string, std::string> header;
+
+            std::smatch path_match;
+            
+            std::string remote_endpoint_address;
+            unsigned short remote_endpoint_port;
+            
+        private:
+            Request(): content(&streambuf) {}
+            
+            boost::asio::streambuf streambuf;
+            
+            void read_remote_endpoint_data(socket_type& socket) {
+                try {
+                    remote_endpoint_address=socket.lowest_layer().remote_endpoint().address().to_string();
+                    remote_endpoint_port=socket.lowest_layer().remote_endpoint().port();
+                }
+                catch(const std::exception& e) {
+                    std::cerr << e.what() << std::endl;
+                }
+            }
+        };
+        
+        std::unordered_map<std::string, std::unordered_map<std::string, 
+            std::function<void(typename ServerBase<socket_type>::Response&, std::shared_ptr<typename ServerBase<socket_type>::Request>)> > >  resource;
+        
+        std::unordered_map<std::string, 
+            std::function<void(typename ServerBase<socket_type>::Response&, std::shared_ptr<typename ServerBase<socket_type>::Request>)> > default_resource;
+
+    private:
+        std::vector<std::pair<std::string, std::vector<std::pair<std::regex, 
+            std::function<void(typename ServerBase<socket_type>::Response&, std::shared_ptr<typename ServerBase<socket_type>::Request>)> > > > > opt_resource;
+        
+    public:
+        void start() {
+            //Copy the resources to opt_resource for more efficient request processing
+            opt_resource.clear();
+            for(auto& res: resource) {
+                for(auto& res_method: res.second) {
+                    auto it=opt_resource.end();
+                    for(auto opt_it=opt_resource.begin();opt_it!=opt_resource.end();opt_it++) {
+                        if(res_method.first==opt_it->first) {
+                            it=opt_it;
+                            break;
+                        }
+                    }
+                    if(it==opt_resource.end()) {
+                        opt_resource.emplace_back();
+                        it=opt_resource.begin()+(opt_resource.size()-1);
+                        it->first=res_method.first;
+                    }
+                    it->second.emplace_back(std::regex(res.first), res_method.second);
+                }
+            }
+                        
+            accept(); 
+            
+            //If num_threads>1, start m_io_service.run() in (num_threads-1) threads for thread-pooling
             threads.clear();
-            for(size_t c = 1;c<num_threads;c++) {
+            for(size_t c=1;c<num_threads;c++) {
                 threads.emplace_back([this](){
-                    m_io_service.run();
+                    io_service.run();
                 });
             }
 
             //Main thread
-            m_io_service.run();
+            io_service.run();
 
             //Wait for the rest of the threads, if any, to finish as well
             for(auto& t: threads) {
@@ -78,16 +195,12 @@ namespace SimpleWeb {
             }
         }
         
-        inline void stop() {
-            m_io_service.stop();
+        void stop() {
+            io_service.stop();
         }
 
-		inline boost::asio::io_service& getIoService() {
-			return this->m_io_service;
-		}
-
     protected:
-        boost::asio::io_service m_io_service;
+        boost::asio::io_service io_service;
         boost::asio::ip::tcp::endpoint endpoint;
         boost::asio::ip::tcp::acceptor acceptor;
         size_t num_threads;
@@ -95,175 +208,160 @@ namespace SimpleWeb {
         
         size_t timeout_request;
         size_t timeout_content;
-
-		std::function<void(std::shared_ptr<Request>, std::istream&)> request_parser;
-
-        //All resources with default_resource at the end of vector
-        //Created in start()
-        std::vector<typename ResourceMap::iterator> all_resources;
         
-        inline ServerBase(unsigned short port, size_t num_th, size_t timeout_req, 
-				size_t timeout) : endpoint(boost::asio::ip::tcp::v4(), port), 
-				acceptor(m_io_service, endpoint), num_threads(num_th), 
-                timeout_request(timeout_req), timeout_content(timeout), 
-				request_parser(&parser_handwritten) {} // change comment with next line for fast version
-				//request_parser(&parser_regex) {} // change comment with previous line for slow version
+        ServerBase(unsigned short port, size_t num_threads, size_t timeout_request, size_t timeout_send_or_receive) : 
+                endpoint(boost::asio::ip::tcp::v4(), port), acceptor(io_service, endpoint), num_threads(num_threads), 
+                timeout_request(timeout_request), timeout_content(timeout_send_or_receive) {}
         
-        virtual void accept() = 0;
+        virtual void accept()=0;
         
-        inline std::shared_ptr<boost::asio::deadline_timer> set_timeout_on_socket(
-				std::shared_ptr<socket_type> socket, long seconds) 
-		{
-            auto timer(std::make_shared<boost::asio::deadline_timer>(m_io_service));
- 
+        std::shared_ptr<boost::asio::deadline_timer> set_timeout_on_socket(std::shared_ptr<socket_type> socket, size_t seconds) {
+            std::shared_ptr<boost::asio::deadline_timer> timer(new boost::asio::deadline_timer(io_service));
             timer->expires_from_now(boost::posix_time::seconds(seconds));
-            timer->async_wait([socket](const boost::system::error_code& ec) {
+            timer->async_wait([socket](const boost::system::error_code& ec){
                 if(!ec) {
-                    socket->lowest_layer().shutdown(
-						boost::asio::ip::tcp::socket::shutdown_both
-					);
+                    boost::system::error_code ec;
+                    socket->lowest_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
                     socket->lowest_layer().close();
                 }
             });
             return timer;
-        }
+        }       
         
-        inline void read_request_and_content(std::shared_ptr<socket_type> socket) {
+        std::shared_ptr<boost::asio::deadline_timer> set_timeout_on_socket(std::shared_ptr<socket_type> socket, std::shared_ptr<boost::asio::strand> strand, size_t seconds) {
+            std::shared_ptr<boost::asio::deadline_timer> timer(new boost::asio::deadline_timer(io_service));
+            timer->expires_from_now(boost::posix_time::seconds(seconds));
+            timer->async_wait(strand->wrap([socket](const boost::system::error_code& ec){
+                if(!ec) {
+                    boost::system::error_code ec;
+                    socket->lowest_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+                    socket->lowest_layer().close();
+                }
+            }));
+            return timer;
+        }  
+        
+        void read_request_and_content(std::shared_ptr<socket_type> socket) {
             //Create new streambuf (Request::streambuf) for async_read_until()
             //shared_ptr is used to pass temporary objects to the asynchronous functions
-			auto request(std::make_shared<Request>());
+            std::shared_ptr<Request> request(new Request());
+            request->read_remote_endpoint_data(*socket);
 
             //Set timeout on the following boost::asio::async-read or write function
             std::shared_ptr<boost::asio::deadline_timer> timer;
-            if(timeout_request > 0u) {
-                timer = set_timeout_on_socket(socket, 
-					safeSizetToLong(timeout_request));
-			}
-            
-            boost::asio::async_read_until(*socket, request->content_buffer, "\r\n\r\n",
-                    [this, socket, request, timer]
-					(const boost::system::error_code& ec, 
-						size_t bytes_transferred) 
-			{
-                if(timeout_request > 0) {
+            if(timeout_request>0)
+                timer=set_timeout_on_socket(socket, timeout_request);
+                        
+            boost::asio::async_read_until(*socket, request->streambuf, "\r\n\r\n",
+                    [this, socket, request, timer](const boost::system::error_code& ec, size_t bytes_transferred) {
+                if(timeout_request>0)
                     timer->cancel();
-				}
                 if(!ec) {
                     //request->streambuf.size() is not necessarily the same as bytes_transferred, from Boost-docs:
                     //"After a successful async_read_until operation, the streambuf may contain additional data beyond the delimiter"
                     //The chosen solution is to extract lines from the stream directly when parsing the header. What is left of the
                     //streambuf (maybe some bytes of the content) is appended to in the async_read-function below (for retrieving content).
-                    size_t num_additional_bytes = request->content_buffer.size()
-						- bytes_transferred;
+                    size_t num_additional_bytes=request->streambuf.size()-bytes_transferred;
                     
-                    request_parser(request, request->content);
+                    parse_request(request, request->content);
                     
                     //If content, read that as well
-                    if(request->header.count("Content-Length") > 0) {
+                    const auto it=request->header.find("Content-Length");
+                    if(it!=request->header.end()) {
                         //Set timeout on the following boost::asio::async-read or write function
-                        std::shared_ptr<boost::asio::deadline_timer> timerLocal;
-                        if(timeout_content > 0u) {
-                            timerLocal = set_timeout_on_socket(socket, 
-								safeSizetToLong(timeout_content));
-						}
+                        std::shared_ptr<boost::asio::deadline_timer> timer;
+                        if(timeout_content>0)
+                            timer=set_timeout_on_socket(socket, timeout_content);
                         
-                        boost::asio::async_read(*socket, request->content_buffer, 
-                                boost::asio::transfer_exactly(stoull(
-									request->header["Content-Length"]
-									) - num_additional_bytes
-								), [this, socket, request, timer]
-                                (const boost::system::error_code& ecLocal, 
-								 size_t /*bytes_transferredLocal*/) 
-						{
-                            if(timeout_content > 0) {
+                        boost::asio::async_read(*socket, request->streambuf, 
+                                boost::asio::transfer_exactly(stoull(it->second)-num_additional_bytes),
+                                [this, socket, request, timer]
+                                (const boost::system::error_code& ec, size_t /*bytes_transferred*/) {
+                            if(timeout_content>0)
                                 timer->cancel();
-							}
-                            if(!ecLocal) {
-                                write_response(socket, request);
-							}
+                            if(!ec)
+                                find_resource(socket, request);
                         });
                     }
-                    else {                   
-                        write_response(socket, request);
+                    else {
+                        find_resource(socket, request);
                     }
                 }
             });
         }
 
-		template<typename Func>
-		void write_response_impl(std::shared_ptr<socket_type> socket, 
-			std::shared_ptr<Request> request, Func& function) 
-		{
-        	auto write_buffer(std::make_shared<boost::asio::streambuf>());
-        	std::ostream response(write_buffer.get());
-        	//res_it->second.functions[static_cast<size_t>(type)](response, request);
-        	//functions[static_cast<size_t>(type)](response, request);
-        	function(response, request);
+        void parse_request(std::shared_ptr<Request> request, std::istream& stream) const {
+            std::string line;
+            getline(stream, line);
+            size_t method_end=line.find(' ');
+            size_t path_end=line.find(' ', method_end+1);
+            if(method_end!=std::string::npos && path_end!=std::string::npos) {
+                request->method=line.substr(0, method_end);
+                request->path=line.substr(method_end+1, path_end-method_end-1);
+                request->http_version=line.substr(path_end+6, line.size()-path_end-7);
 
-        	//Set timeout on the following boost::asio::async-read or write function
-        	std::shared_ptr<boost::asio::deadline_timer> timer;
-        	if(timeout_content > 0u)
-        	    timer = set_timeout_on_socket(socket, 
-					safeSizetToLong(timeout_content));
-        	
-        	//Capture write_buffer in lambda so it is not destroyed before async_write is finished
-        	boost::asio::async_write(*socket, *write_buffer, 
-                [this, socket, request, write_buffer, timer]
-                (const boost::system::error_code& ec, 
-				 size_t /*bytes_transferredLocal*/) 
-			{
-        	    if(timeout_content > 0) {
-        	        timer->cancel();
-				}
-        	    //HTTP persistent connection (HTTP 1.1):
-        	    if(!ec && stof(request->http_version) > 1.05) {
-        	        read_request_and_content(socket);
-				}
-        	});
-		}
+                getline(stream, line);
+                size_t param_end=line.find(':');
+                while(param_end!=std::string::npos) {                
+                    size_t value_start=param_end+1;
+                    if(line[value_start]==' ')
+                        value_start++;
 
-        inline void write_response(std::shared_ptr<socket_type> socket,
-		   	std::shared_ptr<Request> request) 
-		{
-            //Find path- and method-match, and generate response
-			const CallbackType type = (request->method == "POST" ? 
-				CallbackType::POST : request->method == "GET" ? 
-				CallbackType::GET : CallbackType::INVALID);
+                    std::string key=line.substr(0, param_end);
+                    request->header.insert(std::make_pair(key, line.substr(value_start, line.size()-value_start-1)));
 
-			if(type == CallbackType::INVALID) {
-				std::cout<<"invalid http type"<<std::endl;
-				return;
-			}
+                    getline(stream, line);
+                    param_end=line.find(':');
+                }
+            }
+        }
 
-			for(auto& res_it : resource_vec) {
-				if(request->path.find(res_it.first) == 0u) {
-					write_response_impl(socket, request,
-						res_it.second.functions[static_cast<size_t>(type)]
-					);
-					return;
-				}
-			}
-
-            for(auto& res_it : all_resources) {
-                std::regex e(res_it->first);
-                std::smatch sm_res;
-                if(std::regex_match(request->path, sm_res, e)) {
-					if(res_it->second.type == type) {
-                        request->path_match = move(sm_res);
-						write_response_impl(socket, request,
-							res_it->second.functions[static_cast<size_t>(type)]
-						);
-
-                        return;
+        void find_resource(std::shared_ptr<socket_type> socket, std::shared_ptr<Request> request) {
+            //Find path- and method-match, and call write_response
+            for(auto& res: opt_resource) {
+                if(request->method==res.first) {
+                    for(auto& res_path: res.second) {
+                        std::smatch sm_res;
+                        if(std::regex_match(request->path, sm_res, res_path.first)) {
+                            request->path_match=std::move(sm_res);
+                            write_response(socket, request, res_path.second);
+                            return;
+                        }
                     }
                 }
             }
+            auto it_method=default_resource.find(request->method);
+            if(it_method!=default_resource.end()) {
+                write_response(socket, request, it_method->second);
+            }
+        }
+        
+        void write_response(std::shared_ptr<socket_type> socket, std::shared_ptr<Request> request, 
+                std::function<void(typename ServerBase<socket_type>::Response&, std::shared_ptr<typename ServerBase<socket_type>::Request>)>& resource_function) {
+            std::shared_ptr<boost::asio::strand> strand(new boost::asio::strand(io_service));
 
-			// default resource
-			if(this->default_resource.type == type) {
-				write_response_impl(socket, request, 
-					default_resource.functions[static_cast<size_t>(type)]);
-			}
+            //Set timeout on the following boost::asio::async-read or write function
+            std::shared_ptr<boost::asio::deadline_timer> timer;
+            if(timeout_content>0)
+                timer=set_timeout_on_socket(socket, strand, timeout_content);
+
+            boost::asio::spawn(*strand, [this, strand, &resource_function, socket, request, timer](boost::asio::yield_context yield) {
+                Response response(io_service, socket, strand, yield);
+
+                try {
+                    resource_function(response, request);
+                }
+                catch(std::exception& e) {
+                    return;
+                }
+                
+                response.async_flush([this, socket, request, timer](const boost::system::error_code& ec) {
+                    if(timeout_content>0)
+                        timer->cancel();
+                    if(!ec && stof(request->http_version)>1.05)
+                        read_request_and_content(socket);
+                });
+            });
         }
     };
     
@@ -275,24 +373,23 @@ namespace SimpleWeb {
     template<>
     class Server<HTTP> : public ServerBase<HTTP> {
     public:
-        inline Server(unsigned short portPara, size_t num_threadsPara = 1, 
-			size_t timeout_requestPara = 5, size_t timeout_contentPara = 300) : 
-            ServerBase<HTTP>::ServerBase(portPara, num_threadsPara, timeout_requestPara,
-			timeout_contentPara) {};
+        Server(unsigned short port, size_t num_threads=1, size_t timeout_request=5, size_t timeout_content=300) : 
+                ServerBase<HTTP>::ServerBase(port, num_threads, timeout_request, timeout_content) {}
         
     private:
-        inline void accept() {
+        void accept() {
             //Create new socket for this connection
             //Shared_ptr is used to pass temporary objects to the asynchronous functions
-            auto socket(std::make_shared<HTTP>(m_io_service));
-            
-            acceptor.async_accept(*socket, 
-				[this, socket](const boost::system::error_code& ec) 
-				{
+            std::shared_ptr<HTTP> socket(new HTTP(io_service));
+                        
+            acceptor.async_accept(*socket, [this, socket](const boost::system::error_code& ec){
                 //Immediately start accepting a new connection
                 accept();
-
+                                
                 if(!ec) {
+                    boost::asio::ip::tcp::no_delay option(true);
+                    socket->set_option(option);
+                    
                     read_request_and_content(socket);
                 }
             });
