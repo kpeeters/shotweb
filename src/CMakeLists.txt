@@ -8,7 +8,10 @@ endif()
 
 find_package(OpenCV REQUIRED)
 find_library(sqlite3 sqlite3 required)
-find_package(Boost 1.45.0 COMPONENTS system )
+set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_USE_MULTITHREADED ON)
+set(Boost_USE_STATIC_RUNTIME OFF)
+find_package(Boost 1.45.0 COMPONENTS system asio)
 
 
 add_executable(test_database test_database.cc Database.cc)
