@@ -61,13 +61,11 @@ std::vector<Database::Event> Database::get_events(int event_id)
 					}
 				int id = sqlite3_column_int(statement, 0);
 				event.id=id;
-//				if(sqlite3_column_type(statement, 3)==SQLITE_TEXT) {
-//					const unsigned char *filename = sqlite3_column_text(statement, 3);
-//					event.primary_photo_filename=reinterpret_cast<const char*>(filename);
-//					}
 				if(sqlite3_column_type(statement, 3)==SQLITE_TEXT) {
 					const unsigned char *filename = sqlite3_column_text(statement, 3);
-					event.primary_source_id=reinterpret_cast<const char*>(filename);
+					std::string primary_source_id=reinterpret_cast<const char*>(filename);
+					size_t numpos = primary_source_id.find("0");
+					event.cover_photo_id = std::stoul(primary_source_id.substr(numpos), 0, 16);
 					}
 				results.push_back(event);
 				break;

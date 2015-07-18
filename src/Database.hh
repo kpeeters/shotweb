@@ -22,7 +22,7 @@ class Database {
 				int         id;
 				std::string name;
 				std::string primary_photo_filename;
-				std::string primary_source_id;
+				int         cover_photo_id;
 				std::string comment;
 		};
 		std::vector<Event> get_events(int event_id=-1);

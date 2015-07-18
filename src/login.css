@@ -2,6 +2,7 @@ body {
 	 margin-top: 0px;
 	 margin-left: 0px;
 	 font-family: sans;
+	 background: white;
 }
 div#app {
 	 position: absolute;
@@ -10,6 +11,7 @@ div#app {
 	 left: 0;
 	 right: 0;
 	 z-index: -2;
+	 overflow: hidden;
 }
 div.screen {
 	 text-align: center;
@@ -86,11 +88,52 @@ div#single_shot {
 	 z-index: -2;
 	 overflow: hidden;
 	 white-space: nowrap;
-	 background: white;
+	 background: black;
 	 text-align: center;
 	 opacity: 0;
 }
-div#align_helper {
+div#slide_controls {
+	 display: none;
+	 position: absolute;
+	 width: 100%;
+	 top: 5px;
+	 left: 0px;
+	 padding-left: 10px;
+	 right: 0px;
+}
+div#button_next {
+	 position: relative;
+	 display: inline-block;
+	 background: url("fancybox/fancybox_sprite.png");
+	 background-position: 0px 78px;
+	 width: 33px;
+	 height: 33px;
+    cursor: pointer;	 
+	 z-index: 9;
+}
+div#button_prev {
+	 position: relative;
+	 display: inline-block;
+	 background: url("fancybox/fancybox_sprite.png");
+	 background-position: 0px 113px;
+	 width: 33px;
+	 height: 33px;
+    cursor: pointer;
+	 z-index: 9;
+}
+div#button_close {
+	 position: relative;
+	 float: right;
+	 margin-right: 20px;
+	 display: inline-block;
+	 background: url("fancybox/fancybox_sprite.png");
+	 background-position: 0px 150px;
+	 width: 33px;
+	 height: 33px;
+    cursor: pointer;
+	 z-index: 9;
+}
+div.align_helper {
 	 display: inline-block;
 	 width: 0px;
 	 margin: 0;
@@ -105,7 +148,7 @@ div#single_shot img {
 	 max-width: 100%;
 	 max-height: 100%;
 	 vertical-align: middle;
-	 box-shadow: 1px 1px 6px grey;
+/*	 box-shadow: 1px 1px 6px grey; */
 }
 div#event {
 	 text-align: center;
@@ -157,7 +200,7 @@ div.photo {
 	 margin-right: 10px;
 	 margin-bottom: 10px;
 	 margin-top: 10px;
-	 background: white;
+	 background: black;
 	 box-shadow: 1px 1px 6px grey;
 }
 div.photo_title {
@@ -172,5 +215,5 @@ div.photo a:hover {
 div.photo img {
 	 width: 100%;
 	 vertical-align: top;
-	 background: white;
+	 background: black;
 }

@@ -16,7 +16,7 @@ var fill_event_display = function(data) {
 									 +"</div>");
 	 });
 	 $(".lazy").lazyload({
-		  container: $("#app"),
+		  container: $("#events_segment"),
 		  effect: "fadeIn",
 		  cache: true
 	 });

@@ -20,8 +20,6 @@ var fill_event_display = function(data) {
 	 });
 	 $(".fancybox").on('click', function(ev) {
 		  ev.preventDefault();
-		  var next_photo = $(this).parent().next().find("a");
-		  console.log(next_photo);
 		  var img=$(this).attr('href');
 		  $("#singel_shot img").unbind('load');
 		  $("#single_shot img").bind('load', function() {
@@ -29,13 +27,52 @@ var fill_event_display = function(data) {
 				$("#single_shot").css({'z-index': 2});
 				$("#single_shot").animate({
 					 opacity: 1.0
-					 }, 500, "linear");
+				}, 500, "linear", function() {
+					 $("#slide_controls").show();
+				});
 				
 		  });
 		  $("#single_shot img").attr('src', img);
 	 });
+	 $("#button_next").on('click', function() {
+		  // Find the next photo.
+		  var this_photo     = $("#single_shot img").attr("src");
+		  console.log(this_photo);
+		  var this_thumbnail = $(".fancybox[href='"+this_photo+"']");
+		  console.log(this_thumbnail);
+		  var next_photo = $(this_thumbnail).parent().next().find("a");
+		  console.log(next_photo);
+		  if(next_photo.length==1) {
+				$("#single_shot img").attr('src', $(next_photo).attr('href'));
+		  }
+	 });
+	 $("#button_prev").on('click', function() {
+		  // Find the previous photo.
+		  var this_photo     = $("#single_shot img").attr("src");
+		  console.log(this_photo);
+		  var this_thumbnail = $(".fancybox[href='"+this_photo+"']");
+		  console.log(this_thumbnail);
+		  var prev_photo = $(this_thumbnail).parent().prev().find("a");
+		  console.log(prev_photo);
+		  if(prev_photo.length==1) {
+				$("#single_shot img").attr('src', $(prev_photo).attr('href'));
+		  }
+	 });
+	 $("#button_close").on('click', function(e) {
+				$("#slide_controls").hide();
+				var width=$(window).width();
+				$("#single_shot").animate({ 
+					 left: -width,
+					 right: width,
+					 opacity: 0,
+				}, 500, "linear", function() {
+					 $("#single_shot").hide();
+					 $("#single_shot").css({'z-index': -2, left: 0, right: 0});
+				});
+	 });
 	 $(document).keyup(function(e) {
 		  if(e.keyCode == 27) {
+				$("#slide_controls").hide();
 				var width=$(window).width();
 				$("#single_shot").animate({ 
 					 left: -width,

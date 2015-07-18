@@ -27,6 +27,7 @@ set(HTML_CSS_JS
   denied.html
   jquery.lazyload.js
   fullscreen.png
+  favicon-192.png
 )
 FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/fancybox/*.png" 
                    "${PROJECT_SOURCE_DIR}/fancybox/*.css" 

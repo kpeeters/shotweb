@@ -20,8 +20,9 @@ class Server {
 		void handle_json(std::ostream& response, std::shared_ptr<sw::Request> request);
 		void handle_default(std::ostream& response, std::shared_ptr<sw::Request> request);
 		void send_file(std::ostream& response, const std::string& fn) const;
-		void send_thumbnail(std::ostream& response, const std::string& fn, int max_size) const;
+		void send_thumbnail(std::ostream& response, const Database::Photo& photo, int max_size) const;
 		void send_photo(std::ostream& response, const Database::Photo&) const;
+		bool file_exists(const std::string&) const;
 
 		// Data structures for user -> event(s) authorisation mapping. These will 
 		// eventually come from a database but we have them hardcoded right now
@@ -53,6 +54,9 @@ class Server {
 
 		// Send an access denied page and log the request.
 		void        denied(std::ostream& response, std::shared_ptr<sw::Request> request);
+
+		// Create a thumbnail file of the given photo and store at the given location on disk.
+		void        create_thumbnail(const Database::Photo& photo, const std::string& loc, int max_size) const;
 
 		Database db;
 		std::vector<Database::Event> events;
