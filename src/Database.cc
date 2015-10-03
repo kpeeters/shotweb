@@ -45,7 +45,7 @@ std::vector<Database::Event> Database::get_events(int event_id)
 		}
 	ss << " order by PhotoTable.timestamp desc";
 	std::string query = ss.str();
-	std::cout << query << std::endl;
+	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
 	if(ret!=SQLITE_OK) {
 		throw std::logic_error("Error preparing query");
