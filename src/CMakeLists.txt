@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.6)
 project(phosha)
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBOOST_LOG_DYN_LINK -Wall -g -std=c++11")
+   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -std=c++11")
 endif()
 
 find_package(OpenCV REQUIRED)
@@ -12,7 +12,7 @@ find_library(sqlite3 sqlite3 required)
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost 1.45.0 COMPONENTS system thread coroutine context log REQUIRED)
+find_package(Boost 1.45.0 COMPONENTS system thread coroutine context REQUIRED)
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
