@@ -39,7 +39,7 @@ var load_events = function() {
 		  success: function (data, status)
 		  {
 				if(data.length==0)
-					 window.location.href="login.html";
+					 window.location="/";
 				fill_event_display(data);
 		  },
 		  error: function (xhr, desc, err)

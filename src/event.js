@@ -21,8 +21,10 @@ var fill_event_display = function(data) {
 	 $(".fancybox").on('click', function(ev) {
 		  ev.preventDefault();
 		  var img=$(this).attr('href');
-		  $("#singel_shot img").unbind('load');
+		  $("#single_shot img").unbind('load');
+		  $("#spinner").show();
 		  $("#single_shot img").bind('load', function() {
+				$("#spinner").hide();
 				$("#single_shot").show();
 				$("#single_shot").css({'z-index': 2});
 				$("#single_shot").animate({
@@ -43,6 +45,11 @@ var fill_event_display = function(data) {
 		  var next_photo = $(this_thumbnail).parent().next().find("a");
 		  console.log(next_photo);
 		  if(next_photo.length==1) {
+				$("#single_shot img").unbind('load');
+				$("#spinner").show();
+				$("#single_shot img").bind('load', function() {
+					 $("#spinner").hide();
+				});
 				$("#single_shot img").attr('src', $(next_photo).attr('href'));
 		  }
 	 });
@@ -55,6 +62,11 @@ var fill_event_display = function(data) {
 		  var prev_photo = $(this_thumbnail).parent().prev().find("a");
 		  console.log(prev_photo);
 		  if(prev_photo.length==1) {
+				$("#single_shot img").unbind('load');
+				$("#spinner").show();
+				$("#single_shot img").bind('load', function() {
+					 $("#spinner").hide();
+				});
 				$("#single_shot img").attr('src', $(prev_photo).attr('href'));
 		  }
 	 });
@@ -94,6 +106,7 @@ var load_photos = function(event_id) {
 	 json["action"]="photos";
 	 json["id"]=event_id;
 	 var mydata = JSON.stringify(json);
+	 $("#spinner").show();
 	 $.ajax({
 		  url: "json",
 		  type: "POST",
@@ -104,11 +117,16 @@ var load_photos = function(event_id) {
 		  contentType: "application/json",
 		  success: function (data, status)
 		  {
+				$("#spinner").hide();
 				$("#event_header").html(data["name"]);
-				fill_event_display(data["photos"]);
+				if(data["photos"].length==0) 
+					 window.location="/";
+				else
+					 fill_event_display(data["photos"]);
 		  },
 		  error: function (xhr, desc, err)
 		  {
+				$("#spinner").hide();
 		  }
 	 });
 };
@@ -117,6 +135,9 @@ var load_photos = function(event_id) {
 
 $(document).ready( function() {
 	 var qd = {};
+
+	 $("#spinner").hide();
+
 	 location.search.substr(1).split("&").forEach(function(item) {var k = item.split("=")[0], v = item.split("=")[1]; v = v && decodeURIComponent(v); (k in qd) ? qd[k].push(v) : qd[k] = [v]})
 
 	 load_photos(qd["id"][0]);

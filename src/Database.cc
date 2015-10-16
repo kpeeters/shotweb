@@ -138,7 +138,8 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
-	ss << "select id,filename,orientation,event_id from PhotoTable where event_id='" << event_id << "'";
+	ss << "select id,filename,orientation,event_id from PhotoTable where event_id='" << event_id << "' "
+		<< "order by time_created, timestamp";
 	std::string query = ss.str();
 	// std::cout << query << std::endl;
 	int ret = sqlite3_prepare_v2(db, query.c_str(), -1, &statement, NULL);
