@@ -168,8 +168,8 @@ span#events_header {
 }
 div.event {
 	 display: inline-block;
-	 height: 340px;
-	 width: 300px;
+	 height: 320px;
+	 width: 270px;
 	 margin-left: 10px;
 	 margin-right: 10px;
 	 margin-bottom: 20px;
@@ -194,8 +194,8 @@ div.event img {
 
 div.photo {
 	 display: inline-block;
-	 height: 300px;
-	 width: 300px;
+	 height: 270px;
+	 width: 270px;
 	 margin-left: 10px;
 	 margin-right: 10px;
 	 margin-bottom: 10px;
