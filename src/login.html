@@ -11,12 +11,16 @@
   </head>
   <body>
 	 <div class="screen" id="login_segment">
-		<form action="json" type="POST">
+		<form action="json" method="post" autocomplete="on">
 		  <div id="login">
 			 <h1>ShotWeb login</h1>
 			 <table>
-				<tr><td>user name:</td><td><input type="text" size="30" name="user" /></td></tr>
-				<tr><td>password:</td><td><input type="password" size="30"
+				<tr><td>user name:</td><td><input type="text" 
+															 size="30" 
+															 id="username"
+															 name="username" /></td></tr>
+				<tr><td>password:</td><td><input id="password"
+															type="password" size="30"
 															name="password" /></td></tr>
 				<tr><td>&nbsp;</td></tr>
 				<tr><td colspan=2><input type="submit"
@@ -24,6 +28,7 @@
 			 </table>
 		  </div>
 		</form>
+		<iframe style="display: none;" id="loginframe" name="loginframe" src=""></iframe>
 	 </div>
 
 	 <div id="event_segment">
