@@ -4,7 +4,7 @@
 
 int main(int argc, char **argv)
 	{
-	snoop::log.init("Shotweb", "1.01", "/tmp/shotweb.sql", "localhost:8083");
+		snoop::log.init("Shotweb", "1.01", "localhost:8083", "/home/kasper/snoop/shotweb.sql");
 	snoop::log.set_sync_immediately(true);
 
 	try {
