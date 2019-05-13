@@ -18,6 +18,7 @@ pkg_check_modules(JSONCPP jsoncpp REQUIRED)   # libjsoncpp-dev
 message("-- Found JSONCPP include dir: ${JSONCPP_INCLUDE_DIRS}")
 message("-- Found JSONCPP library dir: ${JSONCPP_LIBRARY_DIRS}")
 message("-- Found JSONCPP libraries  : ${JSONCPP_LIBRARIES}")
+include_directories(${CMAKE_SOURCE_DIR}/../external/sqlite_modern_cpp/hdr)
 if(JSONCPP_INCLUDE_DIRS)
   include_directories("${JSONCPP_INCLUDE_DIRS}")
   #"../../snoop/src/")
@@ -30,7 +31,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 endif()
 
 add_executable(test_database test_database.cc Database.cc)
-add_executable(shotweb shotweb.cc Server.cc Database.cc)
+add_executable(shotweb Database.cc Server.cc shotweb.cc )
 target_link_libraries(test_database sqlite3)
 target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS} pthread jsoncpp)
 

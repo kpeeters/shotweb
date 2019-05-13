@@ -9,7 +9,7 @@
 
 #include <string>
 #include <vector>
-#include <sqlite3.h>
+#include <sqlite_modern_cpp.h>
 
 class Database {
 	public:
@@ -40,7 +40,8 @@ class Database {
 		Photo              get_photo(int photo_id);
 
 	private:
-		sqlite3 *db;
+		sqlite::sqlite_config             config;
+		std::unique_ptr<sqlite::database> db;
 
 		std::string oldroot, newroot;
 };
