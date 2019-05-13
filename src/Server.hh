@@ -3,27 +3,29 @@
 
 #pragma once
 
-#include "server_http.hpp"
+// https://github.com/yhirose/cpp-httplib
+#include "httplib.h"
+
+// https://github.com/nlohmann/json
+#include "json.hpp"
+
 #include "Database.hh"
-
-namespace sw = SimpleWeb;
-
-typedef sw::Server<sw::HTTP> HttpServer;
 
 class Server {
 	public:
-		Server();
+		Server(const std::string& db_path, const std::string& htmlpath, int port,
+				 const std::string& oldroot, const std::string& newroot);
 
 		void start();
 
 	private:
-		HttpServer server;
+		httplib::Server server;
 		
-		void handle_json(HttpServer::Response& response, std::shared_ptr<HttpServer::Request> request);
-		void handle_default(HttpServer::Response& response, std::shared_ptr<HttpServer::Request> request);
-		void send_file(HttpServer::Response& response, const std::string& fn) const;
-		void send_thumbnail(HttpServer::Response& response, const Database::Photo& photo, int max_size) const;
-		void send_photo(HttpServer::Response& response, const Database::Photo&) const;
+		void handle_json(const httplib::Request& request, httplib::Response& response);
+		void handle_default(const httplib::Request& request, httplib::Response& response);
+		void send_file(httplib::Response& response, const std::string& fn) const;
+		void send_thumbnail(httplib::Response& response, const Database::Photo& photo, int max_size) const;
+		void send_photo(httplib::Response& response, const Database::Photo&) const;
 		bool file_exists(const std::string&) const;
 
 		// Data structures for user -> event(s) authorisation mapping. These will 
@@ -52,10 +54,10 @@ class Server {
 		bool        access_allowed(int event_id, const std::string& token) const;
 		
 		// Extract the authorisation token from the HTTP request header, if any.
-		std::string extract_token(std::shared_ptr<HttpServer::Request> request);
+		std::string extract_token(const httplib::Request& request);
 
 		// Send an access denied page and log the request.
-		void        denied(HttpServer::Response& response, std::shared_ptr<HttpServer::Request> request);
+		void        denied(const httplib::Request& request, httplib::Response& response);
 
 		// Create a thumbnail file of the given photo and store at the given location on disk.
 		void        create_thumbnail(const Database::Photo& photo, const std::string& loc, int max_size) const;
@@ -68,4 +70,7 @@ class Server {
 
 		// Path to the thumbnail cache.
 		std::string cachepath;
+
+		// Port on which to listen.
+		int port;
 };

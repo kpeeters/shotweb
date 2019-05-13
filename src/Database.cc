@@ -4,8 +4,8 @@
 #include <iostream>
 #include <sstream>
 
-Database::Database(const std::string& name)
-	: db(0)
+Database::Database(const std::string& name, const std::string& oldroot, const std::string& newroot)
+	: db(0), oldroot(oldroot), newroot(newroot)
 	{
 	int ret = sqlite3_open_v2(name.c_str(), &db, SQLITE_OPEN_READONLY, NULL);
 	if(ret) 
@@ -89,6 +89,14 @@ std::vector<Database::Event> Database::get_events(int event_id)
 	return results;
 	}
 
+bool replace(std::string& str, const std::string& from, const std::string& to) {
+    size_t start_pos = str.find(from);
+    if(start_pos == std::string::npos)
+        return false;
+    str.replace(start_pos, from.length(), to);
+    return true;
+}
+
 Database::Photo Database::get_photo(int photo_id) 
 	{
 	sqlite3_stmt *statement=0;
@@ -109,6 +117,8 @@ Database::Photo Database::get_photo(int photo_id)
 				if(sqlite3_column_type(statement, 1)==SQLITE_TEXT) {
 					const unsigned char *name = sqlite3_column_text(statement, 1);
 					photo.filename=reinterpret_cast<const char*>(name);
+					if(oldroot!="")
+						replace(photo.filename, oldroot, newroot);
 					}
 				photo.orientation=sqlite3_column_int(statement, 2);
 				photo.event_id=sqlite3_column_int(statement, 3);

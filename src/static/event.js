@@ -98,6 +98,38 @@ var fill_event_display = function(data) {
 	 });
 };
 
+// Load a list of all users and their access permissions for this
+// event.
+
+var load_users = function(event_id) {
+	 var json={};
+	 json["action"]="users";
+	 json["id"]=event_id;
+	 var mydata = JSON.stringify(json);
+	 $.ajax({
+		  url: "json",
+		  type: "POST",
+		  dataType: "JSON",
+		  cache: true,
+		  data: mydata,
+		  processData: false,
+		  contentType: "application/json",
+		  success: function (data, status)
+		  {
+				$("#spinner").hide();
+				$("#event_header").html(data["name"]);
+				if(data["photos"].length==0) 
+					 window.location="/";
+				else
+					 fill_event_display(data["photos"]);
+		  },
+		  error: function (xhr, desc, err)
+		  {
+				$("#spinner").hide();
+		  }
+    });
+};
+
 // Load a list of photos in an event and generate placeholder divs for
 // their thumbnails and descriptions. We will load the images later.
 
@@ -142,6 +174,11 @@ $(document).ready( function() {
 
 	 load_photos(qd["id"][0]);
 
+    $("#access").on('click', function(e) {
+        e.preventDefault();
+        load_users(qd["id"][0]);
+    });
+    
 	 $("#fullscreen").on('click', function(e) {
 		  e.preventDefault();
 		  // http://www.sitepoint.com/html5-full-screen-api/

@@ -13,7 +13,7 @@
 
 class Database {
 	public:
-		Database(const std::string& db);
+		Database(const std::string& db, const std::string& oldroot, const std::string& newroot);
 		~Database();
 		
 		// Retrieve a list of all events.
@@ -41,4 +41,7 @@ class Database {
 
 	private:
 		sqlite3 *db;
+
+		std::string oldroot, newroot;
 };
+

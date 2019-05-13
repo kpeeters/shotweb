@@ -19,7 +19,8 @@ message("-- Found JSONCPP include dir: ${JSONCPP_INCLUDE_DIRS}")
 message("-- Found JSONCPP library dir: ${JSONCPP_LIBRARY_DIRS}")
 message("-- Found JSONCPP libraries  : ${JSONCPP_LIBRARIES}")
 if(JSONCPP_INCLUDE_DIRS)
-include_directories("${JSONCPP_INCLUDE_DIRS}" "../../snoop/src/")
+  include_directories("${JSONCPP_INCLUDE_DIRS}")
+  #"../../snoop/src/")
 endif(JSONCPP_INCLUDE_DIRS)
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -29,7 +30,7 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
 endif()
 
 add_executable(test_database test_database.cc Database.cc)
-add_executable(shotweb shotweb.cc Server.cc Database.cc Snoop.cc)
+add_executable(shotweb shotweb.cc Server.cc Database.cc)
 target_link_libraries(test_database sqlite3)
 target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS} pthread jsoncpp)
 

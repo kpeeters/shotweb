@@ -4,7 +4,7 @@
 
 int main(int argc, char **argv)
 	{
-	Database db("photo.db");
+	Database db("photo.db", "", "");
 
 	auto events = db.get_events();
 	auto it=events.begin();
