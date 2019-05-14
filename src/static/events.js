@@ -10,8 +10,9 @@ var fill_event_display = function(data) {
 		  $("#events").append("<div class='event'>"
 									 +"<a href='event.html?id="+this["id"]+"'>"
 									 +"<img class='lazy' data-original='event_thumbnail_"
-									 +this["id"]+"' />"
-									 +"<div class='event_controls'><div class='event_title'>"+this["event"]+"</div><i class='material-icons'>share</i></div>"
+									 +this["id"]+"' /></a>"
+									 +"<div class='event_controls'><div class='event_title'>"
+                            +"<a href='event.html?id="+this["id"]+"'>"+this["event"]+"</a></div><i class='material-icons'>share</i></div>"
 									 +"</a>"
 									 +"</div>");
 	 });
