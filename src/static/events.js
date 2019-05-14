@@ -11,7 +11,7 @@ var fill_event_display = function(data) {
 									 +"<a href='event.html?id="+this["id"]+"'>"
 									 +"<img class='lazy' data-original='event_thumbnail_"
 									 +this["id"]+"' />"
-									 +"<div class='event_title'>"+this["event"]+"</div>"
+									 +"<div class='event_controls'><div class='event_title'>"+this["event"]+"</div><i class='material-icons'>share</i></div>"
 									 +"</a>"
 									 +"</div>");
 	 });

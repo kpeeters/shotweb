@@ -41,12 +41,13 @@ std::vector<Database::Event> Database::get_events(int event_id)
 	query+=" order by PhotoTable.timestamp desc";
 
 	(*db) << query
-		>> [&](int id, std::string name, std::string comment, int source_id) {
+		>> [&](int id, std::string name, std::string comment, std::string primary_source_id) {
 				Event event;
 				event.id=id;
 				event.name=name;
 				event.comment=comment;
-				event.cover_photo_id=source_id;
+				size_t numpos = primary_source_id.find("0");
+				event.cover_photo_id = std::stoul(primary_source_id.substr(numpos), 0, 16);
 				results.push_back(event);
 		};
 
@@ -67,7 +68,6 @@ Database::Photo Database::get_photo(int photo_id)
 	std::ostringstream ss;
 	ss << "select id,filename,orientation,event_id from PhotoTable where id='" << photo_id << "'";
 	std::string query = ss.str();
-
 	Database::Photo photo;
 	
 	(*db) << query

@@ -34,6 +34,7 @@ class Server {
 
 		class Authorisation {
 			public:
+				int              id;
 				std::string      name;
 				std::string      password;
 				bool             root;
@@ -41,11 +42,14 @@ class Server {
 		};
 		typedef std::string Token;
 
-		std::vector<Authorisation>     users;
-		std::map<Token, Authorisation> authorisations;
+		std::map<int,   Authorisation> users;
+		std::map<Token, int>           authorisations; 
 
 		// Initialise the authorisations map from a disk database.
 		void        init_authorisations();
+
+		// Register a new user.
+		void        register_user(const std::string& user, const std::string& passwd, bool admin);
 
 		// Validate a user, return an access token if valid.
 		std::string validate_user(const std::string& user, const std::string& passwd);

@@ -25,7 +25,7 @@ $(document).ready( function() {
 
 	 $(document).on("submit", "form", function(event) {
 		  event.preventDefault();     
-		  // Convert the form to an key-value object and add the action.
+		  // Convert the form to a key-value object and add the action.
 		  var formobj = $('form').serializeObject();
 		  formobj["action"]="login";
 		  var mydata = JSON.stringify(formobj);
