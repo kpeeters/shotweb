@@ -74,6 +74,7 @@ Database::Photo Database::get_photo(int photo_id)
 		>> [&](int id, std::string filename, int orientation, int event_id) {
 		photo.id=id;
 		photo.filename=filename;
+		replace(photo.filename, oldroot, newroot);
 		photo.orientation=orientation;
 		photo.event_id=event_id;
 		};
@@ -97,6 +98,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 		Photo photo;
 		photo.id=id;
 		photo.filename=filename;
+		replace(photo.filename, oldroot, newroot);		
 		photo.orientation=orientation;
 		photo.event_id=event_id;
 		results.push_back(photo);
