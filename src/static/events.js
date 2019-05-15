@@ -1,4 +1,28 @@
 
+function setCookie(key, value, expireDays, expireHours, expireMinutes, expireSeconds) {
+    var expireDate = new Date();
+    if (expireDays) {
+        expireDate.setDate(expireDate.getDate() + expireDays);
+    }
+    if (expireHours) {
+        expireDate.setHours(expireDate.getHours() + expireHours);
+    }
+    if (expireMinutes) {
+        expireDate.setMinutes(expireDate.getMinutes() + expireMinutes);
+    }
+    if (expireSeconds) {
+        expireDate.setSeconds(expireDate.getSeconds() + expireSeconds);
+    }
+    document.cookie = key +"="+ escape(value) +
+        ";domain="+ window.location.hostname +
+        ";path=/"+
+        ";expires="+expireDate.toUTCString();
+}
+
+function deleteCookie(name) {
+    setCookie(name, "", null , null , null, 1);
+}
+
 // Fill the event display with info.
 
 var fill_event_display = function(data) {
@@ -54,6 +78,12 @@ var load_events = function() {
 $(document).ready( function() {
 	 load_events();
 
+    $("#logout").on('click', function(e) {
+        e.preventDefault();
+        deleteCookie("token");
+        window.location="/";
+    });
+    
 	 $("#fullscreen").on('click', function(e) {
 		  e.preventDefault();
 		  // http://www.sitepoint.com/html5-full-screen-api/
