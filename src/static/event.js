@@ -178,6 +178,11 @@ $(document).ready( function() {
         e.preventDefault();
         load_users(qd["id"][0]);
     });
+
+    $("#back_button").on('click', function(e) {
+        e.preventDefault();
+        history.back();
+    });
     
 	 $("#fullscreen").on('click', function(e) {
 		  e.preventDefault();

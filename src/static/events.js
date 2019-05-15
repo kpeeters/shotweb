@@ -12,7 +12,7 @@ var fill_event_display = function(data) {
 									 +"<img class='lazy' data-original='event_thumbnail_"
 									 +this["id"]+"' /></a>"
 									 +"<div class='event_controls'><div class='event_title'>"
-                            +"<a href='event.html?id="+this["id"]+"'>"+this["event"]+"</a></div><i class='material-icons'>share</i></div>"
+                            +"<a href='event.html?id="+this["id"]+"'>"+this["event"]+"</a></div><i class='material-icons'>share</i><i class='material-icons'>person_add</i></div>"
 									 +"</a>"
 									 +"</div>");
 	 });
