@@ -16,6 +16,24 @@ Features:
 * Download single photos or entire events as zip files.
 * Thumbnail caching.
 
+Building
+--------
+
+First install the prerequisites with::
+
+    sudo apt install cmake g++ libopencv-dev libboost-dev
+    
+Then build as::
+
+    cd shotweb
+    mkdir build
+    cd build
+    cmake ..
+    make
+    sudo make install
+    
+    
+    
 
 Used libraries 
 --------------
