@@ -21,7 +21,8 @@ Building
 
 First install the prerequisites with::
 
-    sudo apt install cmake g++ libopencv-dev libboost-dev
+    sudo apt install cmake g++ libopencv-dev libboost-all-dev \
+                     libsqlite3-dev ffmpegthumbnailer 
     
 Then build as::
 

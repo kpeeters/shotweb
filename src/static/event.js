@@ -7,12 +7,21 @@ var fill_event_display = function(data) {
 	 $.each(data, function() {
 		  if(this["event"]=="")
 				this["event"]="&nbsp;";
-		  $("#event").append("<div class='photo'>"
-									 +"<a class='fancybox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
-									 +"<img width=200 class='lazy' data-original='photo_thumbnail_"
-									 +this["id"]+"' />"
-									 +"</a>"
-									 +"</div>");
+        if(this["is_video"]) {
+		      $("#event").append("<div class='photo'>"
+									    +"<a class='fancybox' rel='group' href='video.jpg?id="+this["id"]+"'>"
+									    +"<img width=200 class='lazy' data-original='video_thumbnail_"
+									    +this["id"]+"' />"
+									    +"</a>"
+									    +"</div>");
+        } else {
+		      $("#event").append("<div class='photo'>"
+									    +"<a class='fancybox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
+									    +"<img width=200 class='lazy' data-original='photo_thumbnail_"
+									    +this["id"]+"' />"
+									    +"</a>"
+									    +"</div>");
+        }
 	 });
 	 $(".lazy").lazyload({
 		  effect: "fadeIn",

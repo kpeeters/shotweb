@@ -37,9 +37,11 @@ class Database {
 				std::string filename;
 				int         orientation;
 				int         event_id;
+				bool        is_video;
 		};
 		std::vector<Photo> get_photos(int event_id);
 		Photo              get_photo(int photo_id);
+		Photo              get_video(int video_id);
 
 	private:
 		sqlite::sqlite_config             config;

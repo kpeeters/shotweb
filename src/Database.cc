@@ -86,6 +86,28 @@ Database::Photo Database::get_photo(int photo_id)
 		photo.filename=filename;
 		replace(photo.filename, oldroot, newroot);
 		photo.orientation=orientation;
+		photo.is_video=false;		
+		photo.event_id=event_id;
+		};
+
+	return photo;
+	}
+
+Database::Photo Database::get_video(int video_id) 
+	{
+	sqlite3_stmt *statement=0;
+	std::ostringstream ss;
+	ss << "select id,filename,event_id from VideoTable where id='" << video_id << "'";
+	std::string query = ss.str();
+	Database::Photo photo;
+	
+	(*db) << query
+		>> [&](int id, std::string filename, int event_id) {
+		photo.id=id;
+		photo.filename=filename;
+		replace(photo.filename, oldroot, newroot);
+		photo.orientation=1;
+		photo.is_video=true;
 		photo.event_id=event_id;
 		};
 
@@ -111,8 +133,27 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 		replace(photo.filename, oldroot, newroot);		
 		photo.orientation=orientation;
 		photo.event_id=event_id;
+		photo.is_video=false;		
 		results.push_back(photo);
 		};
+
+	ss.str("");
+	ss << "select id,filename,event_id from VideoTable where event_id='" << event_id << "' "
+		<< "order by time_created, timestamp";
+	query = ss.str();
+	std::cerr << query << std::endl;
+	(*db) << query
+		>> [&](int id, std::string filename, int event_id) {
+		Photo photo;
+		photo.id=id;
+		photo.filename=filename;
+		replace(photo.filename, oldroot, newroot);		
+		photo.orientation=1;
+		photo.event_id=event_id;
+		photo.is_video=true;
+		results.push_back(photo);
+		};
+	
 
 	return results;
 	}

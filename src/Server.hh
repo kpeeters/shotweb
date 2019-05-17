@@ -11,6 +11,8 @@
 
 #include "Database.hh"
 
+#include <mutex>
+
 class Server {
 	public:
 		Server(const std::string& db_path, const std::string& htmlpath, int port,
@@ -26,6 +28,7 @@ class Server {
 		void send_file(httplib::Response& response, const std::string& fn) const;
 		void send_thumbnail(httplib::Response& response, const Database::Photo& photo, int max_size) const;
 		void send_photo(httplib::Response& response, const Database::Photo&) const;
+		void send_video(httplib::Response& response, const Database::Photo&) const;		
 		bool file_exists(const std::string&) const;
 
 		// Data structures for user -> event(s) authorisation mapping. These will 
@@ -86,4 +89,6 @@ class Server {
 
 		// Port on which to listen.
 		int port;
+
+		mutable std::mutex video_mutex;
 };
