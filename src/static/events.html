@@ -8,13 +8,23 @@
 	 <link href="login.css" rel="stylesheet" type="text/css" />
 	 <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
 	 <script src="events.js"></script>
-	 <script src="jquery.lazyload.js"></script>
+	 <script src="lazyload.min.js"></script>
 	 <link rel="icon" type="image/png" href="favicon-192.png" sizes="192x192" />
-	 </style>
   </head>
   <body id="body">
-	 <div id="app">
-		<div id="controls">
+    <div id="events_dialog">
+      <div id="dialog_text">
+        Share the <span id="event_name"></span> album by using the
+        following link:
+      </div>
+      <div id="dialog_link">
+      </div>
+      <div id="dialog_buttons">
+        <div class="ui_button" id="ok">Ok</div>
+      </div>
+    </div>
+    <div id="app">
+	   <div id="controls">
 		  <span id="events_header">Zamaklar-Peeters Gallery</span>
         <span>
           <a href="#admin"

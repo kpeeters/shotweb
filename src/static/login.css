@@ -127,6 +127,28 @@ div#controls img {
 #events {
     
 }
+.ui_button {
+    background: #ddd;
+    font-size: 20px;
+    cursor: pointer;
+    color: rgb(160,20,20);
+    padding: 10px;
+	 box-shadow: 1px 1px 2px #999;        
+}
+#dialog_link {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+#dialog_link a {
+    text-decoration: none;
+}
+#dialog_buttons {
+    margin-top: 10px;
+    width: 100%;
+    display: flex;
+    flex-direction: row;
+    justify-content: flex-end;
+}
 #fullscreen {
 	 display: none;
 }
@@ -148,6 +170,17 @@ div.event_controls {
 div.event_controls i {
     font-size: 16px;
     margin-right: 10px;
+}
+div#events_dialog {
+    visibility: hidden;
+    position: absolute;
+    left: 30%;
+    top: 30%;
+    width: 40%;
+    background: white;
+    padding: 20px;
+    font-size: 24px;
+	 box-shadow: 1px 1px 3px #999;    
 }
 div#event_segment {
     width: 100%;
@@ -257,6 +290,10 @@ div.event {
 	 background: white;
 	 box-shadow: 1px 1px 3px #999;
 }
+div.date {
+    font-size: 12px;
+    margin-left: 10px;
+}
 div.event_title {
     flex-grow: 1;
     font-size: 20px;
@@ -269,7 +306,8 @@ div.event a:hover {
 	 color: red;
 }
 div.event img {
-	 width: 100%;
+	 width: 270px;
+    height: 270px;
 	 vertical-align: top;
 	 background: white;
 }

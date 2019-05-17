@@ -172,7 +172,10 @@ $(document).ready( function() {
 
 	 location.search.substr(1).split("&").forEach(function(item) {var k = item.split("=")[0], v = item.split("=")[1]; v = v && decodeURIComponent(v); (k in qd) ? qd[k].push(v) : qd[k] = [v]})
 
-	 load_photos(qd["id"][0]);
+    if(qd["id"])
+	     load_photos(qd["id"][0]);
+    else
+        window.location="/";
 
     $("#access").on('click', function(e) {
         e.preventDefault();

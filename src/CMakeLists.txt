@@ -30,8 +30,8 @@ if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     endif()
 endif()
 
-add_executable(test_database test_database.cc Database.cc)
-add_executable(shotweb Database.cc Server.cc shotweb.cc )
+add_executable(test_database test_database.cc Database.cc Utility.cc)
+add_executable(shotweb Database.cc Server.cc Utility.cc shotweb.cc )
 target_link_libraries(test_database sqlite3)
 target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS} pthread jsoncpp)
 

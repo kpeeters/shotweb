@@ -1,5 +1,6 @@
 
 #include "Database.hh"
+#include "Utility.hh"
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
@@ -51,16 +52,25 @@ std::vector<Database::Event> Database::get_events(int event_id)
 				results.push_back(event);
 		};
 
+	// Now give these a first date & last date timestamp.
+	for(auto& event: results) {
+		query = "select min(exposure_time), max(exposure_time) from PhotoTable where event_id='"+std::to_string(event.id)+"'";
+		(*db) << query
+			>> [&](uint32_t start, uint32_t end) {
+			event.start_timestamp=start;
+			event.end_timestamp=end;
+			};
+		}
+
+	// Sort events by starting date.
+	std::sort(results.begin(), results.end(),
+				 [&](const auto& e1, const auto& e2) {
+					 return e1.end_timestamp > e2.end_timestamp;
+					 }
+				 );
+	
 	return results;
 	}
-
-bool replace(std::string& str, const std::string& from, const std::string& to) {
-    size_t start_pos = str.find(from);
-    if(start_pos == std::string::npos)
-        return false;
-    str.replace(start_pos, from.length(), to);
-    return true;
-}
 
 Database::Photo Database::get_photo(int photo_id) 
 	{

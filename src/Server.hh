@@ -42,8 +42,14 @@ class Server {
 		};
 		typedef std::string Token;
 
+		// Information mapping a user ID to Authorisation data.
 		std::map<int,   Authorisation> users;
-		std::map<Token, int>           authorisations; 
+
+		// Information mapping a UUID token to a user ID.
+		std::map<Token, int>           authorisations;
+
+		// Information mapping a UUID token to an event (for passwordless sharing).
+		std::map<Token, int>           share_links;
 
 		// Initialise the authorisations map from a disk database.
 		void        init_authorisations();
@@ -51,6 +57,9 @@ class Server {
 		// Register a new user.
 		void        register_user(const std::string& user, const std::string& passwd, bool admin);
 
+		// Register a new token for sharing an event without password.
+		Token       register_share_link(int event_id);
+			
 		// Validate a user, return an access token if valid.
 		std::string validate_user(const std::string& user, const std::string& passwd);
 
@@ -64,7 +73,7 @@ class Server {
 		void        denied(const httplib::Request& request, httplib::Response& response);
 
 		// Create a thumbnail file of the given photo and store at the given location on disk.
-		void        create_thumbnail(const Database::Photo& photo, const std::string& loc, int max_size) const;
+		void        create_thumbnail(const Database::Photo& photo, const std::string& loc) const;
 
 		Database db;
 		std::vector<Database::Event> events;

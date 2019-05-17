@@ -27,24 +27,51 @@ function deleteCookie(name) {
 
 var fill_event_display = function(data) {
 	 $("#events").empty();
+    var monthNames = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
 
 	 $.each(data, function() {
 		  if(this["event"]=="")
 				this["event"]="&nbsp;";
+        var date=new Date(this["start"]*1000);
 		  $("#events").append("<div class='event'>"
 									 +"<a href='event.html?id="+this["id"]+"'>"
-									 +"<img class='lazy' data-original='event_thumbnail_"
+									 +"<img class='lazy' data-src='event_thumbnail_"
 									 +this["id"]+"' /></a>"
-									 +"<div class='event_controls'><div class='event_title'>"
-                            +"<a href='event.html?id="+this["id"]+"'>"+this["event"]+"</a></div><i class='material-icons'>share</i><i class='material-icons'>person_add</i></div>"
+									 +"<div class='event_controls'>"
+                            +"<div class='date'>"+monthNames[date.getMonth()]+" "+date.getFullYear()+"</div>"
+                            +"<div class='event_title'>"
+                            +"<a href='event.html?id="+this["id"]+"'>"+this["event"]+"</a></div><a class='share_event' href=''><i id='share_event_"+this["id"]+"' class='material-icons'>share</i></a><a class='person_add' href=''><i class='material-icons'>person_add</i></a></div>"
 									 +"</a>"
 									 +"</div>");
 	 });
-	 $(".lazy").lazyload({
-		  container: $("#events_segment"),
-		  effect: "fadeIn",
-		  cache: true
-	 });
+    $("img.lazy").lazyload();
+    $(".share_event").on('click', function(e) {
+        e.preventDefault();
+	     var json={};
+	     json["action"]="share";
+        json["event_id"]=parseInt(e.target.id.replace("share_event_", ""));
+	     var mydata = JSON.stringify(json);
+	     $.ajax({
+		      url: "json",
+		      type: "POST",
+		      dataType: "JSON",
+		      data: mydata,
+		      processData: false,
+		      contentType: "application/json",
+		      success: function (data, status)
+		      {
+				    if(data.length==0)
+					     window.location="/";
+                $("#dialog_link").html("<a href='"+data["url"]+"'>"+data["url"]+"</a>");
+                $("#events_dialog").css({'visibility': 'visible'});
+		      },
+		      error: function (xhr, desc, err)
+		      {
+		      }
+	     });
+    });
 };
 
 // Load a list of events and generate placeholder divs for their
@@ -82,6 +109,10 @@ $(document).ready( function() {
         e.preventDefault();
         deleteCookie("token");
         window.location="/";
+    });
+
+    $("#ok").on('click', function(e) {
+        $("#events_dialog").css({'visibility': 'hidden'});
     });
     
 	 $("#fullscreen").on('click', function(e) {

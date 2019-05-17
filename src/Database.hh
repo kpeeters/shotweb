@@ -24,6 +24,8 @@ class Database {
 				std::string primary_photo_filename;
 				int         cover_photo_id;
 				std::string comment;
+				uint32_t    start_timestamp;
+				uint32_t    end_timestamp;
 		};
 		std::vector<Event> get_events(int event_id=-1);
 		Event              get_event(int event_id);

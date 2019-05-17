@@ -5,8 +5,8 @@
 
 int main(int argc, char **argv)
 	{
-	if(argc<4 && (argc>4 && argc!=6)) {
-		std::cerr << "Usage: shotweb [path to 'photos.db'] [path to html/css/js] [port] [oldroot (optional)] [newroot (optional)]" << std::endl;
+	if(argc<4 || (argc>4 && argc!=6)) {
+		std::cerr << "Usage: shotweb [shotwell database file] [html/css/js directory] [port] [oldroot (optional)] [newroot (optional)]" << std::endl;
 		return -1;
 		}
 
