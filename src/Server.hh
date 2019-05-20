@@ -13,16 +13,15 @@
 
 #include <mutex>
 
-class Server {
+class Server : public httplib::Server {
 	public:
 		Server(const std::string& db_path, const std::string& htmlpath, int port,
 				 const std::string& oldroot, const std::string& newroot);
+		virtual ~Server();
 
 		void start();
 
 	private:
-		httplib::Server server;
-		
 		void handle_json(const httplib::Request& request, httplib::Response& response);
 		void handle_default(const httplib::Request& request, httplib::Response& response);
 		void send_file(httplib::Response& response, const std::string& fn) const;
@@ -91,4 +90,17 @@ class Server {
 		int port;
 
 		mutable std::mutex video_mutex;
+
+		class StreamHandler {
+			public:
+				StreamHandler(std::string);
+
+				static const uint64_t chunk_size=32*1024;
+
+				std::string    filename;
+				std::ifstream  vf;
+				bool           finished;
+				char           data[chunk_size];
+		};
+		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
 };
