@@ -8,13 +8,18 @@ photo albums via the web.
 Features:
 
 * Serve directly from the shotwell database and photo folders.
+* Photos as well as videos.
 * Multiple user accounts.
 * Each user can be given access to individual events.
 * Events can be shared by sending a link with a token, does not
   require guest to register an account.
+* Generates thumbnails for photos and videos on the fly.
+* Thumbnail caching.
+
+In the pipeline:
+
 * Photo pre-loading for quick browsing.
 * Download single photos or entire events as zip files.
-* Thumbnail caching.
 
 Building
 --------
