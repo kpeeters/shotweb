@@ -9,14 +9,14 @@ var fill_event_display = function(data) {
 				this["event"]="&nbsp;";
         if(this["is_video"]) {
 		      $("#event").append("<div class='photo'>"
-									    +"<a class='fancybox' rel='group' href='video.jpg?id="+this["id"]+"'>"
+									    +"<a class='fancybox videobox' rel='group' href='video.jpg?id="+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='video_thumbnail_"
 									    +this["id"]+"' />"
 									    +"</a>"
 									    +"</div>");
         } else {
 		      $("#event").append("<div class='photo'>"
-									    +"<a class='fancybox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
+									    +"<a class='fancybox photobox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='photo_thumbnail_"
 									    +this["id"]+"' />"
 									    +"</a>"
@@ -27,7 +27,7 @@ var fill_event_display = function(data) {
 		  effect: "fadeIn",
 		  container: $("#event_segment")
 	 });
-	 $(".fancybox").on('click', function(ev) {
+	 $(".fancybox.photobox").on('click', function(ev) {
 		  ev.preventDefault();
 		  var img=$(this).attr('href');
 		  $("#single_shot img").unbind('load');
