@@ -339,6 +339,49 @@ div.photo img {
 }
 
 
+div.video {
+    position: relative;
+	 display: inline-block;
+	 height: 270px;
+	 width: 270px;
+	 margin-left: 10px;
+	 margin-right: 10px;
+	 margin-bottom: 10px;
+	 margin-top: 10px;
+	 background: black;
+	 box-shadow: 1px 1px 6px grey;
+}
+div.video .strip_upper {
+    background-image: url('strip_upper.png');
+    background-repeat: repeat-x;
+    background-size: contain;
+    position: absolute;
+    top: 0px;
+    height: 20px;
+    width: 100%;
+}
+div.video .strip_lower {
+    background-image: url('strip_lower.png');
+    background-repeat: repeat-x;
+    background-size: contain;
+    position: absolute;
+    bottom: 0px;
+    height: 20px;
+    width: 100%;
+}
+div.video a {
+	 text-decoration: none;
+}
+div.video a:hover {
+	 color: red;
+}
+div.video img {
+	 width: 100%;
+	 vertical-align: top;
+	 background: black;
+}
+
+
 div#spinner {
 	 position: absolute;
 	 top: 50%;

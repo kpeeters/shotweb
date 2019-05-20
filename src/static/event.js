@@ -8,15 +8,17 @@ var fill_event_display = function(data) {
 		  if(this["event"]=="")
 				this["event"]="&nbsp;";
         if(this["is_video"]) {
-		      $("#event").append("<div class='photo'>"
-									    +"<a class='fancybox videobox' rel='group' href='video.jpg?id="+this["id"]+"'>"
+		      $("#event").append("<div class='video'>"
+                               +"<div class='strip_upper'></div>"
+                               +"<div class='strip_lower'></div>"                               
+									    +"<a class='fancybox videobox' rel='group' href='video?id="+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='video_thumbnail_"
 									    +this["id"]+"' />"
 									    +"</a>"
 									    +"</div>");
         } else {
 		      $("#event").append("<div class='photo'>"
-									    +"<a class='fancybox photobox' rel='group' href='photo.jpg?id="+this["id"]+"'>"
+									    +"<a class='fancybox photobox' rel='group' href='photo?id="+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='photo_thumbnail_"
 									    +this["id"]+"' />"
 									    +"</a>"
