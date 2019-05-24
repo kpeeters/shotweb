@@ -34,15 +34,18 @@ set(HTML_CSS_JS
   static/event.html
   static/event.js
   static/denied.html
+  static/setup.html
   static/jquery.lazyload.js
   static/lazyload.min.js
   static/fullscreen.png
   static/favicon-192.png
+  static/strip_upper.png
+  static/strip_lower.png  
 )
-FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/fancybox/*.png" 
-                   "${PROJECT_SOURCE_DIR}/fancybox/*.css" 
-                   "${PROJECT_SOURCE_DIR}/fancybox/*.js")
-FILE(GLOB FANCYBOX_HELPERS "${PROJECT_SOURCE_DIR}/fancybox/helpers/*")
+FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/static/fancybox/*.png" 
+                   "${PROJECT_SOURCE_DIR}/static/fancybox/*.css" 
+                   "${PROJECT_SOURCE_DIR}/static/fancybox/*.js")
+FILE(GLOB FANCYBOX_HELPERS "${PROJECT_SOURCE_DIR}/static/fancybox/helpers/*")
 
 install(PROGRAMS ${PROJECT_BINARY_DIR}/shotweb DESTINATION bin)
 install(FILES ${HTML_CSS_JS}      DESTINATION share/shotweb)

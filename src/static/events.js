@@ -63,7 +63,7 @@ var fill_event_display = function(data) {
 		      success: function (data, status)
 		      {
 				    if(data.length==0)
-					     window.location="/";
+					     window.location="login.html";
                 $("#dialog_link").html("<a href='"+data["url"]+"'>"+data["url"]+"</a>");
                 $("#events_dialog").css({'visibility': 'visible'});
 		      },
@@ -91,7 +91,7 @@ var load_events = function() {
 		  success: function (data, status)
 		  {
 				if(data.length==0)
-					 window.location="/";
+					 window.location="login.html";
 				fill_event_display(data);
 		  },
 		  error: function (xhr, desc, err)
@@ -116,7 +116,7 @@ var load_account_info = function() {
 		  success: function (data, status)
 		  {
 				if(data.length==0)
-					 window.location="/";
+					 window.location="login.html";
             if(data["allowed_add_user"]) {
                 $("#admin").css({"visibility": "visible"});
                 $("#access").css({"visibility": "visible"});
@@ -142,7 +142,7 @@ $(document).ready( function() {
     $("#logout").on('click', function(e) {
         e.preventDefault();
         deleteCookie("token");
-        window.location="/";
+        window.location="login.html";
     });
 
     $("#ok").on('click', function(e) {

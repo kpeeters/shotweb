@@ -89,6 +89,12 @@ div#controls #admin {
 div#controls #download {
     visibility: hidden;
 }
+div#controls #share {
+    visibility: hidden;
+}
+div#controls #access {
+    visibility: hidden;
+}
 div#controls span {
     margin-left: 5px;
     margin-right: 5px;    

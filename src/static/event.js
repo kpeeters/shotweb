@@ -130,7 +130,7 @@ var load_users = function(event_id) {
 				$("#spinner").hide();
 				$("#event_header").html(data["name"]);
 				if(data["photos"].length==0) 
-					 window.location="/";
+					 window.location="login.html";
 				else
 					 fill_event_display(data["photos"]);
 		  },
