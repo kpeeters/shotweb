@@ -26,17 +26,18 @@ target_link_libraries(test_database sqlite3)
 target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS} pthread)
 
 set(HTML_CSS_JS
-  login.html
-  login.css
-  login.js
-  events.html
-  events.js
-  event.html
-  event.js
-  denied.html
-  jquery.lazyload.js
-  fullscreen.png
-  favicon-192.png
+  static/login.html
+  static/login.css
+  static/login.js
+  static/events.html
+  static/events.js
+  static/event.html
+  static/event.js
+  static/denied.html
+  static/jquery.lazyload.js
+  static/lazyload.min.js
+  static/fullscreen.png
+  static/favicon-192.png
 )
 FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/fancybox/*.png" 
                    "${PROJECT_SOURCE_DIR}/fancybox/*.css" 
