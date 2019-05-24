@@ -83,6 +83,12 @@ div#controls {
 /*	 background-image: linear-gradient(to bottom, rgba(255,255,255,1) 40%, rgba(0,0,0,0)); */
 	 text-align: center;
 }
+div#controls #admin {
+    visibility: hidden;
+}
+div#controls #download {
+    visibility: hidden;
+}
 div#controls span {
     margin-left: 5px;
     margin-right: 5px;    

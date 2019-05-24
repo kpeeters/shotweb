@@ -3,7 +3,7 @@ Shotweb: web server for shotwell photo databases
 ================================================
 
 Shotweb is a simple, modern and compact C++ server to share Shotwell
-photo albums via the web.
+photo albums via the web. 
 
 Features:
 
@@ -15,6 +15,8 @@ Features:
   require guest to register an account.
 * Generates thumbnails for photos and videos on the fly.
 * Thumbnail caching.
+* Clean compact C++ with handcoded HTML/CSS/JS.
+
 
 In the pipeline:
 

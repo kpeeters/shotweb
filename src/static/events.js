@@ -100,9 +100,43 @@ var load_events = function() {
 	 });
 };
 
+// Get the account information.
+
+var load_account_info = function() {
+    var json={};
+    json["action"]="account";
+    var mydata = JSON.stringify(json);
+	 $.ajax({
+		  url: "json",
+		  type: "POST",
+		  dataType: "JSON",
+		  data: mydata,
+		  processData: false,
+		  contentType: "application/json",
+		  success: function (data, status)
+		  {
+				if(data.length==0)
+					 window.location="/";
+            if(data["allowed_add_user"]) {
+                $("#admin").css({"visibility": "visible"});
+                $("#access").css({"visibility": "visible"});
+            }
+            if(data["allowed_download"])
+                $("#download").css({"visibility": "visible"});
+            if(data["allowed_share"])
+                $("#share").css({"visibility": "visible"});
+		  },
+		  error: function (xhr, desc, err)
+		  {
+		  }
+	 });
+};
+
+
 // Main entry.
 
 $(document).ready( function() {
+    load_account_info();
 	 load_events();
 
     $("#logout").on('click', function(e) {
