@@ -15,7 +15,7 @@
 
 class Server : public httplib::Server {
 	public:
-		Server(const std::string& db_path, const std::string& htmlpath, int port,
+		Server(const std::string& db_path, const std::string& authdbpath, const std::string& htmlpath, int port,
 				 const std::string& oldroot, const std::string& newroot);
 		virtual ~Server();
 
@@ -80,6 +80,9 @@ class Server : public httplib::Server {
 		Database db;
 		std::vector<Database::Event> events;
 
+		// Path to the auth.db authorisation database file.
+		std::string authdbpath;
+		
 		// Path to the html, css and javascrpipt files.
 		std::string htmlpath;
 
