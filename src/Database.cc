@@ -4,12 +4,13 @@
 #include <stdexcept>
 #include <iostream>
 #include <sstream>
+#include <sys/inotify.h>
 
 Database::Database(const std::string& name, const std::string& oldroot, const std::string& newroot)
 	: oldroot(oldroot), newroot(newroot)
 	{
 	config.flags=sqlite::OpenFlags::READONLY;
-	db = std::make_unique<sqlite::database>(name, config);	
+	db = std::make_unique<sqlite::database>(name, config);
 	}
 
 Database::~Database()

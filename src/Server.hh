@@ -78,7 +78,7 @@ class Server : public httplib::Server {
 		void        create_thumbnail(const Database::Photo& photo, const std::string& loc) const;
 
 		Database db;
-		std::vector<Database::Event> events;
+//		std::vector<Database::Event> events;
 
 		// Path to the auth.db authorisation database file.
 		std::string authdbpath;

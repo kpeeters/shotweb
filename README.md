@@ -41,6 +41,14 @@ Then build as::
     sudo make install
     
     
+Inspiration
+-----------
+
+There are a few related projects, mostly unmaintained, which inspired Shotweb::
+
+    http://www.jonh.net/~jonh/shotgo/README.html
+    https://github.com/vmassuchetto/shotwell-web-client/tree/master/shotwell_web_client
+
     
 
 Used libraries 
