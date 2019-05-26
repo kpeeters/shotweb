@@ -106,4 +106,7 @@ class Server : public httplib::Server {
 				char           data[chunk_size];
 		};
 		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
+
+	private:
+		std::string logstamp(const httplib::Request&) const;
 };
