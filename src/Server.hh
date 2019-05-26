@@ -24,10 +24,10 @@ class Server : public httplib::Server {
 	private:
 		void handle_json(const httplib::Request& request, httplib::Response& response);
 		void handle_default(const httplib::Request& request, httplib::Response& response);
-		void send_file(httplib::Response& response, const std::string& fn) const;
-		void send_thumbnail(httplib::Response& response, const Database::Photo& photo, int max_size) const;
-		void send_photo(httplib::Response& response, const Database::Photo&) const;
-		void send_video(httplib::Response& response, const Database::Photo&) const;		
+		void send_file(const httplib::Request& request, httplib::Response& response, const std::string& fn) const;
+		void send_thumbnail(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo, int max_size) const;
+		void send_photo(const httplib::Request& request, httplib::Response& response, const Database::Photo&) const;
+		void send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo&) const;		
 		bool file_exists(const std::string&) const;
 
 		// Data structures for user -> event(s) authorisation mapping. These will 
@@ -75,7 +75,7 @@ class Server : public httplib::Server {
 		void        denied(const httplib::Request& request, httplib::Response& response);
 
 		// Create a thumbnail file of the given photo and store at the given location on disk.
-		void        create_thumbnail(const Database::Photo& photo, const std::string& loc) const;
+		void        create_thumbnail(const httplib::Request&, const Database::Photo& photo, const std::string& loc) const;
 
 		Database db;
 //		std::vector<Database::Event> events;
@@ -108,5 +108,5 @@ class Server : public httplib::Server {
 		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
 
 	private:
-		std::string logstamp(const httplib::Request&) const;
+		std::string logstamp(const httplib::Request *request=0) const;
 };
