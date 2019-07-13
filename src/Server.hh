@@ -13,6 +13,10 @@
 
 #include <mutex>
 
+namespace cv {
+	class Mat;
+};
+
 class Server : public httplib::Server {
 	public:
 		Server(const std::string& db_path, const std::string& authdbpath, const std::string& htmlpath, int port,
@@ -77,6 +81,9 @@ class Server : public httplib::Server {
 		// Create a thumbnail file of the given photo and store at the given location on disk.
 		void        create_thumbnail(const httplib::Request&, const Database::Photo& photo, const std::string& loc) const;
 
+		// Correct orientation of the image given the orientation flag.
+		cv::Mat     apply_orientation(cv::Mat, int orientation) const;
+		
 		Database db;
 //		std::vector<Database::Event> events;
 
