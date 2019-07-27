@@ -11,7 +11,7 @@ find_library(sqlite3 sqlite3 required)
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
-find_package(Boost 1.45.0 COMPONENTS system REQUIRED)
+find_package(Boost 1.45.0 COMPONENTS system filesystem REQUIRED)
 include_directories(${CMAKE_SOURCE_DIR}/../external/sqlite_modern_cpp/hdr)
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
