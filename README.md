@@ -50,6 +50,12 @@ There are a few related projects, mostly unmaintained, which inspired Shotweb::
     https://github.com/vmassuchetto/shotwell-web-client/tree/master/shotwell_web_client
 
     
+Movie re-encoding
+-----------------
+
+    ffmpeg -i IMG_0841.MOV -c:v libx264 -movflags faststart -crf 23 -maxrate 16M -bufsize 32M -vf "scale=960:-1" outfile.mp4
+
+
 
 Used libraries 
 --------------
