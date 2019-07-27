@@ -60,12 +60,14 @@ typedef int socket_t;
 #endif //_WIN32
 
 #include <assert.h>
+#include <atomic>
 #include <fcntl.h>
 #include <fstream>
 #include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <random>
 #include <regex>
 #include <string>
 #include <sys/stat.h>
@@ -75,6 +77,13 @@ typedef int socket_t;
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+#include <openssl/crypto.h>
+inline const unsigned char *ASN1_STRING_get0_data(const ASN1_STRING *asn1) {
+  return M_ASN1_STRING_data(asn1);
+}
+#endif
 #endif
 
 #ifdef CPPHTTPLIB_ZLIB_SUPPORT
@@ -87,8 +96,11 @@ typedef int socket_t;
 #define CPPHTTPLIB_KEEPALIVE_TIMEOUT_SECOND 5
 #define CPPHTTPLIB_KEEPALIVE_TIMEOUT_USECOND 0
 #define CPPHTTPLIB_KEEPALIVE_MAX_COUNT 5
+#define CPPHTTPLIB_READ_TIMEOUT_SECOND 5
+#define CPPHTTPLIB_READ_TIMEOUT_USECOND 0
 #define CPPHTTPLIB_REQUEST_URI_MAX_LENGTH 8192
-#define CPPHTTPLIB_PAYLOAD_MAX_LENGTH std::numeric_limits<uint64_t>::max()
+#define CPPHTTPLIB_PAYLOAD_MAX_LENGTH (std::numeric_limits<size_t>::max)()
+#define CPPHTTPLIB_RECV_BUFSIZ size_t(4096u)
 
 namespace httplib {
 
@@ -114,6 +126,9 @@ std::pair<std::string, std::string> make_range_header(uint64_t value,
 
 typedef std::multimap<std::string, std::string> Params;
 typedef std::smatch Match;
+
+typedef std::function<std::string(uint64_t offset)> ContentProducer;
+typedef std::function<void(const char *data, size_t len)> ContentReceiver;
 typedef std::function<bool(uint64_t current, uint64_t total)> Progress;
 
 struct MultipartFile {
@@ -123,6 +138,14 @@ struct MultipartFile {
   size_t length = 0;
 };
 typedef std::multimap<std::string, MultipartFile> MultipartFiles;
+
+struct MultipartFormData {
+  std::string name;
+  std::string content;
+  std::string filename;
+  std::string content_type;
+};
+typedef std::vector<MultipartFormData> MultipartFormDataItems;
 
 struct Request {
   std::string version;
@@ -135,7 +158,9 @@ struct Request {
   MultipartFiles files;
   Match matches;
 
-  Progress progress;
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+  const SSL *ssl;
+#endif
 
   bool has_header(const char *key) const;
   std::string get_header_value(const char *key, size_t id = 0) const;
@@ -155,7 +180,10 @@ struct Response {
   int status;
   Headers headers;
   std::string body;
-  std::function<std::string(uint64_t offset)> streamcb;
+
+  ContentProducer content_producer;
+  ContentReceiver content_receiver;
+  Progress progress;
 
   bool has_header(const char *key) const;
   std::string get_header_value(const char *key, size_t id = 0) const;
@@ -178,7 +206,7 @@ public:
   virtual std::string get_remote_addr() const = 0;
 
   template <typename... Args>
-  void write_format(const char *fmt, const Args &... args);
+  int write_format(const char *fmt, const Args &... args);
 };
 
 class SocketStream : public Stream {
@@ -248,7 +276,8 @@ public:
 
 protected:
   bool process_request(Stream &strm, bool last_connection,
-                       bool &connection_close);
+                       bool &connection_close,
+                       std::function<void(Request &)> setup_request = nullptr);
 
   size_t keep_alive_max_count_;
   size_t payload_max_length_;
@@ -266,13 +295,13 @@ private:
   bool dispatch_request(Request &req, Response &res, Handlers &handlers);
 
   bool parse_request_line(const char *s, Request &req);
-  void write_response(Stream &strm, bool last_connection, const Request &req,
+  bool write_response(Stream &strm, bool last_connection, const Request &req,
                       Response &res);
 
   virtual bool read_and_close_socket(socket_t sock);
 
-  bool is_running_;
-  socket_t svr_sock_;
+  std::atomic<bool> is_running_;
+  std::atomic<socket_t> svr_sock_;
   std::string base_dir_;
   Handlers get_handlers_;
   Handlers post_handlers_;
@@ -300,6 +329,13 @@ public:
   std::shared_ptr<Response> Get(const char *path, const Headers &headers,
                                 Progress progress = nullptr);
 
+  std::shared_ptr<Response> Get(const char *path,
+                                ContentReceiver content_receiver,
+                                Progress progress = nullptr);
+  std::shared_ptr<Response> Get(const char *path, const Headers &headers,
+                                ContentReceiver content_receiver,
+                                Progress progress = nullptr);
+
   std::shared_ptr<Response> Head(const char *path);
   std::shared_ptr<Response> Head(const char *path, const Headers &headers);
 
@@ -312,6 +348,11 @@ public:
   std::shared_ptr<Response> Post(const char *path, const Params &params);
   std::shared_ptr<Response> Post(const char *path, const Headers &headers,
                                  const Params &params);
+
+  std::shared_ptr<Response> Post(const char *path,
+                                 const MultipartFormDataItems &items);
+  std::shared_ptr<Response> Post(const char *path, const Headers &headers,
+                                 const MultipartFormDataItems &items);
 
   std::shared_ptr<Response> Put(const char *path, const std::string &body,
                                 const char *content_type);
@@ -374,7 +415,9 @@ private:
 
 class SSLServer : public Server {
 public:
-  SSLServer(const char *cert_path, const char *private_key_path);
+  SSLServer(const char *cert_path, const char *private_key_path,
+            const char *client_ca_cert_file_path = nullptr,
+            const char *client_ca_cert_dir_path = nullptr);
 
   virtual ~SSLServer();
 
@@ -389,13 +432,16 @@ private:
 
 class SSLClient : public Client {
 public:
-  SSLClient(const char *host, int port = 443, time_t timeout_sec = 300);
+  SSLClient(const char *host, int port = 443, time_t timeout_sec = 300,
+            const char *client_cert_path = nullptr,
+            const char *client_key_path = nullptr);
 
   virtual ~SSLClient();
 
   virtual bool is_valid() const;
 
-  void set_ca_cert_path(const char *ca_cert_path);
+  void set_ca_cert_path(const char *ca_ceert_file_path,
+                        const char *ca_cert_dir_path = nullptr);
   void enable_server_certificate_verification(bool enabled);
 
   long get_openssl_verify_result() const;
@@ -413,7 +459,8 @@ private:
   SSL_CTX *ctx_;
   std::mutex ctx_mutex_;
   std::vector<std::string> host_components_;
-  std::string ca_cert_path_;
+  std::string ca_cert_file_path_;
+  std::string ca_cert_dir_path_;
   bool server_certificate_verification_ = false;
   long verify_result_ = 0;
 };
@@ -423,6 +470,172 @@ private:
  * Implementation
  */
 namespace detail {
+
+inline bool is_hex(char c, int &v) {
+  if (0x20 <= c && isdigit(c)) {
+    v = c - '0';
+    return true;
+  } else if ('A' <= c && c <= 'F') {
+    v = c - 'A' + 10;
+    return true;
+  } else if ('a' <= c && c <= 'f') {
+    v = c - 'a' + 10;
+    return true;
+  }
+  return false;
+}
+
+inline bool from_hex_to_i(const std::string &s, size_t i, size_t cnt,
+                          int &val) {
+  if (i >= s.size()) { return false; }
+
+  val = 0;
+  for (; cnt; i++, cnt--) {
+    if (!s[i]) { return false; }
+    int v = 0;
+    if (is_hex(s[i], v)) {
+      val = val * 16 + v;
+    } else {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline std::string from_i_to_hex(uint64_t n) {
+  const char *charset = "0123456789abcdef";
+  std::string ret;
+  do {
+    ret = charset[n & 15] + ret;
+    n >>= 4;
+  } while (n > 0);
+  return ret;
+}
+
+inline size_t to_utf8(int code, char *buff) {
+  if (code < 0x0080) {
+    buff[0] = (code & 0x7F);
+    return 1;
+  } else if (code < 0x0800) {
+    buff[0] = (0xC0 | ((code >> 6) & 0x1F));
+    buff[1] = (0x80 | (code & 0x3F));
+    return 2;
+  } else if (code < 0xD800) {
+    buff[0] = (0xE0 | ((code >> 12) & 0xF));
+    buff[1] = (0x80 | ((code >> 6) & 0x3F));
+    buff[2] = (0x80 | (code & 0x3F));
+    return 3;
+  } else if (code < 0xE000) { // D800 - DFFF is invalid...
+    return 0;
+  } else if (code < 0x10000) {
+    buff[0] = (0xE0 | ((code >> 12) & 0xF));
+    buff[1] = (0x80 | ((code >> 6) & 0x3F));
+    buff[2] = (0x80 | (code & 0x3F));
+    return 3;
+  } else if (code < 0x110000) {
+    buff[0] = (0xF0 | ((code >> 18) & 0x7));
+    buff[1] = (0x80 | ((code >> 12) & 0x3F));
+    buff[2] = (0x80 | ((code >> 6) & 0x3F));
+    buff[3] = (0x80 | (code & 0x3F));
+    return 4;
+  }
+
+  // NOTREACHED
+  return 0;
+}
+
+// NOTE: This code came up with the following stackoverflow post:
+// https://stackoverflow.com/questions/180947/base64-decode-snippet-in-c
+inline std::string base64_encode(const std::string &in) {
+  static const auto lookup =
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+  std::string out;
+  out.reserve(in.size());
+
+  int val = 0;
+  int valb = -6;
+
+  for (uint8_t c : in) {
+    val = (val << 8) + c;
+    valb += 8;
+    while (valb >= 0) {
+      out.push_back(lookup[(val >> valb) & 0x3F]);
+      valb -= 6;
+    }
+  }
+
+  if (valb > -6) { out.push_back(lookup[((val << 8) >> (valb + 8)) & 0x3F]); }
+
+  while (out.size() % 4) {
+    out.push_back('=');
+  }
+
+  return out;
+}
+
+inline bool is_file(const std::string &path) {
+  struct stat st;
+  return stat(path.c_str(), &st) >= 0 && S_ISREG(st.st_mode);
+}
+
+inline bool is_dir(const std::string &path) {
+  struct stat st;
+  return stat(path.c_str(), &st) >= 0 && S_ISDIR(st.st_mode);
+}
+
+inline bool is_valid_path(const std::string &path) {
+  size_t level = 0;
+  size_t i = 0;
+
+  // Skip slash
+  while (i < path.size() && path[i] == '/') {
+    i++;
+  }
+
+  while (i < path.size()) {
+    // Read component
+    auto beg = i;
+    while (i < path.size() && path[i] != '/') {
+      i++;
+    }
+
+    auto len = i - beg;
+    assert(len > 0);
+
+    if (!path.compare(beg, len, ".")) {
+      ;
+    } else if (!path.compare(beg, len, "..")) {
+      if (level == 0) { return false; }
+      level--;
+    } else {
+      level++;
+    }
+
+    // Skip slash
+    while (i < path.size() && path[i] == '/') {
+      i++;
+    }
+  }
+
+  return true;
+}
+
+inline void read_file(const std::string &path, std::string &out) {
+  std::ifstream fs(path, std::ios_base::binary);
+  fs.seekg(0, std::ios_base::end);
+  auto size = fs.tellg();
+  fs.seekg(0);
+  out.resize(static_cast<size_t>(size));
+  fs.read(&out[0], size);
+}
+
+inline std::string file_extension(const std::string &path) {
+  std::smatch m;
+  auto pat = std::regex("\\.([a-zA-Z0-9]+)$");
+  if (std::regex_search(path, m, pat)) { return m[1].str(); }
+  return std::string();
+}
 
 template <class Fn> void split(const char *b, const char *e, char d, Fn fn) {
   int i = 0;
@@ -625,12 +838,24 @@ socket_t create_socket(const char *host, int port, Fn fn,
 
   for (auto rp = result; rp; rp = rp->ai_next) {
     // Create a socket
+#ifdef _WIN32
+    auto sock = WSASocketW(rp->ai_family, rp->ai_socktype, rp->ai_protocol,
+                           nullptr, 0, WSA_FLAG_NO_HANDLE_INHERIT);
+#else
     auto sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+#endif
     if (sock == INVALID_SOCKET) { continue; }
+
+#ifndef _WIN32
+    if (fcntl(sock, F_SETFD, FD_CLOEXEC) == -1) { continue; }
+#endif
 
     // Make 'reuse address' option available
     int yes = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char *)&yes, sizeof(yes));
+#ifdef SO_REUSEPORT
+    setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, (char *)&yes, sizeof(yes));
+#endif
 
     // bind or connect
     if (fn(sock, *rp)) {
@@ -677,69 +902,6 @@ inline std::string get_remote_addr(socket_t sock) {
     }
   }
 
-  return std::string();
-}
-
-inline bool is_file(const std::string &path) {
-  struct stat st;
-  return stat(path.c_str(), &st) >= 0 && S_ISREG(st.st_mode);
-}
-
-inline bool is_dir(const std::string &path) {
-  struct stat st;
-  return stat(path.c_str(), &st) >= 0 && S_ISDIR(st.st_mode);
-}
-
-inline bool is_valid_path(const std::string &path) {
-  size_t level = 0;
-  size_t i = 0;
-
-  // Skip slash
-  while (i < path.size() && path[i] == '/') {
-    i++;
-  }
-
-  while (i < path.size()) {
-    // Read component
-    auto beg = i;
-    while (i < path.size() && path[i] != '/') {
-      i++;
-    }
-
-    auto len = i - beg;
-    assert(len > 0);
-
-    if (!path.compare(beg, len, ".")) {
-      ;
-    } else if (!path.compare(beg, len, "..")) {
-      if (level == 0) { return false; }
-      level--;
-    } else {
-      level++;
-    }
-
-    // Skip slash
-    while (i < path.size() && path[i] == '/') {
-      i++;
-    }
-  }
-
-  return true;
-}
-
-inline void read_file(const std::string &path, std::string &out) {
-  std::ifstream fs(path, std::ios_base::binary);
-  fs.seekg(0, std::ios_base::end);
-  auto size = fs.tellg();
-  fs.seekg(0);
-  out.resize(static_cast<size_t>(size));
-  fs.read(&out[0], size);
-}
-
-inline std::string file_extension(const std::string &path) {
-  std::smatch m;
-  auto pat = std::regex("\\.([a-zA-Z0-9]+)$");
-  if (std::regex_search(path, m, pat)) { return m[1].str(); }
   return std::string();
 }
 
@@ -793,6 +955,99 @@ inline const char *status_message(int status) {
   }
 }
 
+#ifdef CPPHTTPLIB_ZLIB_SUPPORT
+inline bool can_compress(const std::string &content_type) {
+  return !content_type.find("text/") || content_type == "image/svg+xml" ||
+         content_type == "application/javascript" ||
+         content_type == "application/json" ||
+         content_type == "application/xml" ||
+         content_type == "application/xhtml+xml";
+}
+
+inline bool compress(std::string &content) {
+  z_stream strm;
+  strm.zalloc = Z_NULL;
+  strm.zfree = Z_NULL;
+  strm.opaque = Z_NULL;
+
+  auto ret = deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8,
+                          Z_DEFAULT_STRATEGY);
+  if (ret != Z_OK) { return false; }
+
+  strm.avail_in = content.size();
+  strm.next_in = (Bytef *)content.data();
+
+  std::string compressed;
+
+  const auto bufsiz = 16384;
+  char buff[bufsiz];
+  do {
+    strm.avail_out = bufsiz;
+    strm.next_out = (Bytef *)buff;
+    ret = deflate(&strm, Z_FINISH);
+    assert(ret != Z_STREAM_ERROR);
+    compressed.append(buff, bufsiz - strm.avail_out);
+  } while (strm.avail_out == 0);
+
+  assert(ret == Z_STREAM_END);
+  assert(strm.avail_in == 0);
+
+  content.swap(compressed);
+
+  deflateEnd(&strm);
+  return true;
+}
+
+class decompressor {
+public:
+  decompressor() {
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+
+    // 15 is the value of wbits, which should be at the maximum possible value
+    // to ensure that any gzip stream can be decoded. The offset of 16 specifies
+    // that the stream to decompress will be formatted with a gzip wrapper.
+    is_valid_ = inflateInit2(&strm, 16 + 15) == Z_OK;
+  }
+
+  ~decompressor() { inflateEnd(&strm); }
+
+  bool is_valid() const { return is_valid_; }
+
+  template <typename T>
+  bool decompress(const char *data, size_t data_len, T callback) {
+    int ret = Z_OK;
+
+    strm.avail_in = data_len;
+    strm.next_in = (Bytef *)data;
+
+    const auto bufsiz = 16384;
+    char buff[bufsiz];
+    do {
+      strm.avail_out = bufsiz;
+      strm.next_out = (Bytef *)buff;
+
+      ret = inflate(&strm, Z_NO_FLUSH);
+      assert(ret != Z_STREAM_ERROR);
+      switch (ret) {
+      case Z_NEED_DICT:
+      case Z_DATA_ERROR:
+      case Z_MEM_ERROR: inflateEnd(&strm); return false;
+      }
+
+      callback(buff, bufsiz - strm.avail_out);
+    } while (strm.avail_out == 0);
+
+    return ret == Z_STREAM_END;
+  }
+
+private:
+  bool is_valid_;
+  z_stream strm;
+};
+#endif
+
 inline bool has_header(const Headers &headers, const char *key) {
   return headers.find(key) != headers.end();
 }
@@ -836,13 +1091,17 @@ inline bool read_headers(Stream &strm, Headers &headers) {
   return true;
 }
 
-inline bool read_content_with_length(Stream &strm, std::string &out, size_t len,
-                                     Progress progress) {
-  out.assign(len, 0);
+template <typename T>
+inline bool read_content_with_length(Stream &strm, size_t len,
+                                     Progress progress, T callback) {
+  char buf[CPPHTTPLIB_RECV_BUFSIZ];
+
   size_t r = 0;
   while (r < len) {
-    auto n = strm.read(&out[r], len - r);
+    auto n = strm.read(buf, std::min((len - r), CPPHTTPLIB_RECV_BUFSIZ));
     if (n <= 0) { return false; }
+
+    callback(buf, n);
 
     r += n;
 
@@ -855,31 +1114,33 @@ inline bool read_content_with_length(Stream &strm, std::string &out, size_t len,
 }
 
 inline void skip_content_with_length(Stream &strm, size_t len) {
-  char buf[BUFSIZ];
+  char buf[CPPHTTPLIB_RECV_BUFSIZ];
   size_t r = 0;
   while (r < len) {
-    auto n = strm.read(buf, BUFSIZ);
+    auto n = strm.read(buf, std::min((len - r), CPPHTTPLIB_RECV_BUFSIZ));
     if (n <= 0) { return; }
     r += n;
   }
 }
 
-inline bool read_content_without_length(Stream &strm, std::string &out) {
+template <typename T>
+inline bool read_content_without_length(Stream &strm, T callback) {
+  char buf[CPPHTTPLIB_RECV_BUFSIZ];
   for (;;) {
-    char byte;
-    auto n = strm.read(&byte, 1);
+    auto n = strm.read(buf, CPPHTTPLIB_RECV_BUFSIZ);
     if (n < 0) {
       return false;
     } else if (n == 0) {
       return true;
     }
-    out += byte;
+    callback(buf, n);
   }
 
   return true;
 }
 
-inline bool read_content_chunked(Stream &strm, std::string &out) {
+template <typename T>
+inline bool read_content_chunked(Stream &strm, T callback) {
   const auto bufsiz = 16;
   char buf[bufsiz];
 
@@ -890,16 +1151,13 @@ inline bool read_content_chunked(Stream &strm, std::string &out) {
   auto chunk_len = std::stoi(reader.ptr(), 0, 16);
 
   while (chunk_len > 0) {
-    std::string chunk;
-    if (!read_content_with_length(strm, chunk, chunk_len, nullptr)) {
+    if (!read_content_with_length(strm, chunk_len, nullptr, callback)) {
       return false;
     }
 
     if (!reader.getline()) { return false; }
 
     if (strcmp(reader.ptr(), "\r\n")) { break; }
-
-    out += chunk;
 
     if (!reader.getline()) { return false; }
 
@@ -914,46 +1172,101 @@ inline bool read_content_chunked(Stream &strm, std::string &out) {
   return true;
 }
 
-template <typename T>
-bool read_content(Stream &strm, T &x, uint64_t payload_max_length,
-                  bool &exceed_payload_max_length,
-                  Progress progress = Progress()) {
-  if (has_header(x.headers, "Content-Length")) {
-    auto len = get_header_value_uint64(x.headers, "Content-Length", 0);
-    if (len == 0) {
-      const auto &encoding =
-          get_header_value(x.headers, "Transfer-Encoding", 0, "");
-      if (!strcasecmp(encoding, "chunked")) {
-        return read_content_chunked(strm, x.body);
-      }
-    }
-
-    if ((len > payload_max_length) ||
-        // For 32-bit platform
-        (sizeof(size_t) < sizeof(uint64_t) &&
-         len > std::numeric_limits<size_t>::max())) {
-      exceed_payload_max_length = true;
-      skip_content_with_length(strm, len);
-      return false;
-    }
-
-    return read_content_with_length(strm, x.body, len, progress);
-  } else {
-    const auto &encoding =
-        get_header_value(x.headers, "Transfer-Encoding", 0, "");
-    if (!strcasecmp(encoding, "chunked")) {
-      return read_content_chunked(strm, x.body);
-    }
-    return read_content_without_length(strm, x.body);
-  }
-  return true;
+inline bool is_chunked_transfer_encoding(const Headers &headers) {
+  return !strcasecmp(get_header_value(headers, "Transfer-Encoding", 0, ""),
+                     "chunked");
 }
 
-template <typename T> inline void write_headers(Stream &strm, const T &info) {
-  for (const auto &x : info.headers) {
-    strm.write_format("%s: %s\r\n", x.first.c_str(), x.second.c_str());
+template <typename T, typename U>
+bool read_content(Stream &strm, T &x, uint64_t payload_max_length, int &status,
+                  Progress progress, U callback) {
+
+  ContentReceiver out = [&](const char *buf, size_t n) { callback(buf, n); };
+
+#ifdef CPPHTTPLIB_ZLIB_SUPPORT
+  detail::decompressor decompressor;
+
+  if (!decompressor.is_valid()) {
+    status = 500;
+    return false;
   }
-  strm.write("\r\n");
+
+  if (x.get_header_value("Content-Encoding") == "gzip") {
+    out = [&](const char *buf, size_t n) {
+      decompressor.decompress(
+          buf, n, [&](const char *buf, size_t n) { callback(buf, n); });
+    };
+  }
+#else
+  if (x.get_header_value("Content-Encoding") == "gzip") {
+    status = 415;
+    return false;
+  }
+#endif
+
+  auto ret = true;
+  auto exceed_payload_max_length = false;
+
+  if (is_chunked_transfer_encoding(x.headers)) {
+    ret = read_content_chunked(strm, out);
+  } else if (!has_header(x.headers, "Content-Length")) {
+    ret = read_content_without_length(strm, out);
+  } else {
+    auto len = get_header_value_uint64(x.headers, "Content-Length", 0);
+    if (len > 0) {
+      if ((len > payload_max_length) ||
+          // For 32-bit platform
+          (sizeof(size_t) < sizeof(uint64_t) &&
+           len > std::numeric_limits<size_t>::max())) {
+        exceed_payload_max_length = true;
+        skip_content_with_length(strm, len);
+        ret = false;
+      } else {
+        ret = read_content_with_length(strm, len, progress, out);
+      }
+    }
+  }
+
+  if (!ret) { status = exceed_payload_max_length ? 413 : 400; }
+
+  return ret;
+}
+
+template <typename T> inline int write_headers(Stream &strm, const T &info) {
+  auto write_len = 0;
+  for (const auto &x : info.headers) {
+    auto len =
+        strm.write_format("%s: %s\r\n", x.first.c_str(), x.second.c_str());
+    if (len < 0) { return len; }
+    write_len += len;
+  }
+  auto len = strm.write("\r\n");
+  if (len < 0) { return len; }
+  write_len += len;
+  return write_len;
+}
+
+template <typename T>
+inline int write_content_chunked(Stream &strm, const T &x) {
+  auto chunked_response = !x.has_header("Content-Length");
+  uint64_t offset = 0;
+  auto data_available = true;
+  auto write_len = 0;
+  while (data_available) {
+    auto chunk = x.content_producer(offset);
+    offset += chunk.size();
+    data_available = !chunk.empty();
+
+    // Emit chunked response header and footer for each chunk
+    if (chunked_response) {
+      chunk = from_i_to_hex(chunk.size()) + "\r\n" + chunk + "\r\n";
+    }
+
+    auto len = strm.write(chunk.c_str(), chunk.size());
+    if (len < 0) { return len; }
+    write_len += len;
+  }
+  return write_len;
 }
 
 inline std::string encode_url(const std::string &s) {
@@ -985,79 +1298,6 @@ inline std::string encode_url(const std::string &s) {
   }
 
   return result;
-}
-
-inline bool is_hex(char c, int &v) {
-  if (0x20 <= c && isdigit(c)) {
-    v = c - '0';
-    return true;
-  } else if ('A' <= c && c <= 'F') {
-    v = c - 'A' + 10;
-    return true;
-  } else if ('a' <= c && c <= 'f') {
-    v = c - 'a' + 10;
-    return true;
-  }
-  return false;
-}
-
-inline bool from_hex_to_i(const std::string &s, size_t i, size_t cnt,
-                          int &val) {
-  if (i >= s.size()) { return false; }
-
-  val = 0;
-  for (; cnt; i++, cnt--) {
-    if (!s[i]) { return false; }
-    int v = 0;
-    if (is_hex(s[i], v)) {
-      val = val * 16 + v;
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
-inline std::string from_i_to_hex(uint64_t n) {
-  const char *charset = "0123456789abcdef";
-  std::string ret;
-  do {
-    ret = charset[n & 15] + ret;
-    n >>= 4;
-  } while (n > 0);
-  return ret;
-}
-
-inline size_t to_utf8(int code, char *buff) {
-  if (code < 0x0080) {
-    buff[0] = (code & 0x7F);
-    return 1;
-  } else if (code < 0x0800) {
-    buff[0] = (0xC0 | ((code >> 6) & 0x1F));
-    buff[1] = (0x80 | (code & 0x3F));
-    return 2;
-  } else if (code < 0xD800) {
-    buff[0] = (0xE0 | ((code >> 12) & 0xF));
-    buff[1] = (0x80 | ((code >> 6) & 0x3F));
-    buff[2] = (0x80 | (code & 0x3F));
-    return 3;
-  } else if (code < 0xE000) { // D800 - DFFF is invalid...
-    return 0;
-  } else if (code < 0x10000) {
-    buff[0] = (0xE0 | ((code >> 12) & 0xF));
-    buff[1] = (0x80 | ((code >> 6) & 0x3F));
-    buff[2] = (0x80 | (code & 0x3F));
-    return 3;
-  } else if (code < 0x110000) {
-    buff[0] = (0xF0 | ((code >> 18) & 0x7));
-    buff[1] = (0x80 | ((code >> 12) & 0x3F));
-    buff[2] = (0x80 | ((code >> 6) & 0x3F));
-    buff[3] = (0x80 | (code & 0x3F));
-    return 4;
-  }
-
-  // NOTREACHED
-  return 0;
 }
 
 inline std::string decode_url(const std::string &s) {
@@ -1203,6 +1443,22 @@ inline std::string to_lower(const char *beg, const char *end) {
   return out;
 }
 
+inline std::string make_multipart_data_boundary() {
+  static const char data[] =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+  std::random_device seed_gen;
+  std::mt19937 engine(seed_gen());
+
+  std::string result = "--cpp-httplib-form-data-";
+
+  for (auto i = 0; i < 16; i++) {
+    result += data[engine() % (sizeof(data) - 1)];
+  }
+
+  return result;
+}
+
 inline void make_range_header_core(std::string &) {}
 
 template <typename uint64_t>
@@ -1218,76 +1474,6 @@ inline void make_range_header_core(std::string &field, uint64_t value1,
   field += std::to_string(value1) + "-" + std::to_string(value2);
   make_range_header_core(field, args...);
 }
-
-#ifdef CPPHTTPLIB_ZLIB_SUPPORT
-inline bool can_compress(const std::string &content_type) {
-  return !content_type.find("text/") || content_type == "image/svg+xml" ||
-         content_type == "application/javascript" ||
-         content_type == "application/json" ||
-         content_type == "application/xml" ||
-         content_type == "application/xhtml+xml";
-}
-
-inline void compress(std::string &content) {
-  z_stream strm;
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
-
-  auto ret = deflateInit2(&strm, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 31, 8,
-                          Z_DEFAULT_STRATEGY);
-  if (ret != Z_OK) { return; }
-
-  strm.avail_in = content.size();
-  strm.next_in = (Bytef *)content.data();
-
-  std::string compressed;
-
-  const auto bufsiz = 16384;
-  char buff[bufsiz];
-  do {
-    strm.avail_out = bufsiz;
-    strm.next_out = (Bytef *)buff;
-    deflate(&strm, Z_FINISH);
-    compressed.append(buff, bufsiz - strm.avail_out);
-  } while (strm.avail_out == 0);
-
-  content.swap(compressed);
-
-  deflateEnd(&strm);
-}
-
-inline void decompress(std::string &content) {
-  z_stream strm;
-  strm.zalloc = Z_NULL;
-  strm.zfree = Z_NULL;
-  strm.opaque = Z_NULL;
-
-  // 15 is the value of wbits, which should be at the maximum possible value to
-  // ensure that any gzip stream can be decoded. The offset of 16 specifies that
-  // the stream to decompress will be formatted with a gzip wrapper.
-  auto ret = inflateInit2(&strm, 16 + 15);
-  if (ret != Z_OK) { return; }
-
-  strm.avail_in = content.size();
-  strm.next_in = (Bytef *)content.data();
-
-  std::string decompressed;
-
-  const auto bufsiz = 16384;
-  char buff[bufsiz];
-  do {
-    strm.avail_out = bufsiz;
-    strm.next_out = (Bytef *)buff;
-    inflate(&strm, Z_NO_FLUSH);
-    decompressed.append(buff, bufsiz - strm.avail_out);
-  } while (strm.avail_out == 0);
-
-  content.swap(decompressed);
-
-  inflateEnd(&strm);
-}
-#endif
 
 #ifdef _WIN32
 class WSInit {
@@ -1315,6 +1501,12 @@ inline std::pair<std::string, std::string> make_range_header(uint64_t value,
   return std::make_pair("Range", field);
 }
 
+inline std::pair<std::string, std::string>
+make_basic_authentication_header(const std::string &username,
+                                 const std::string &password) {
+  auto field = "Basic " + detail::base64_encode(username + ":" + password);
+  return std::make_pair("Authorization", field);
+}
 // Request implementation
 inline bool Request::has_header(const char *key) const {
   return detail::has_header(headers, key);
@@ -1397,7 +1589,7 @@ inline void Response::set_content(const std::string &s,
 
 // Rstream implementation
 template <typename... Args>
-inline void Stream::write_format(const char *fmt, const Args &... args) {
+inline int Stream::write_format(const char *fmt, const Args &... args) {
   const auto bufsiz = 2048;
   char buf[bufsiz];
 
@@ -1406,23 +1598,23 @@ inline void Stream::write_format(const char *fmt, const Args &... args) {
 #else
   auto n = snprintf(buf, bufsiz - 1, fmt, args...);
 #endif
-  if (n > 0) {
-    if (n >= bufsiz - 1) {
-      std::vector<char> glowable_buf(bufsiz);
+  if (n <= 0) { return n; }
 
-      while (n >= static_cast<int>(glowable_buf.size() - 1)) {
-        glowable_buf.resize(glowable_buf.size() * 2);
+  if (n >= bufsiz - 1) {
+    std::vector<char> glowable_buf(bufsiz);
+
+    while (n >= static_cast<int>(glowable_buf.size() - 1)) {
+      glowable_buf.resize(glowable_buf.size() * 2);
 #if defined(_MSC_VER) && _MSC_VER < 1900
-        n = _snprintf_s(&glowable_buf[0], glowable_buf.size(),
-                        glowable_buf.size() - 1, fmt, args...);
+      n = _snprintf_s(&glowable_buf[0], glowable_buf.size(),
+                      glowable_buf.size() - 1, fmt, args...);
 #else
-        n = snprintf(&glowable_buf[0], glowable_buf.size() - 1, fmt, args...);
+      n = snprintf(&glowable_buf[0], glowable_buf.size() - 1, fmt, args...);
 #endif
-      }
-      write(&glowable_buf[0], n);
-    } else {
-      write(buf, n);
     }
+    return write(&glowable_buf[0], n);
+  } else {
+    return write(buf, n);
   }
 }
 
@@ -1432,7 +1624,11 @@ inline SocketStream::SocketStream(socket_t sock) : sock_(sock) {}
 inline SocketStream::~SocketStream() {}
 
 inline int SocketStream::read(char *ptr, size_t size) {
-  return recv(sock_, ptr, static_cast<int>(size), 0);
+  if (detail::select_read(sock_, CPPHTTPLIB_READ_TIMEOUT_SECOND,
+                          CPPHTTPLIB_READ_TIMEOUT_USECOND) > 0) {
+    return recv(sock_, ptr, static_cast<int>(size), 0);
+  }
+  return -1;
 }
 
 inline int SocketStream::write(const char *ptr, size_t size) {
@@ -1551,8 +1747,7 @@ inline bool Server::is_running() const { return is_running_; }
 inline void Server::stop() {
   if (is_running_) {
     assert(svr_sock_ != INVALID_SOCKET);
-    auto sock = svr_sock_;
-    svr_sock_ = INVALID_SOCKET;
+    std::atomic<socket_t> sock(svr_sock_.exchange(INVALID_SOCKET));
     detail::shutdown_socket(sock);
     detail::close_socket(sock);
   }
@@ -1579,15 +1774,17 @@ inline bool Server::parse_request_line(const char *s, Request &req) {
   return false;
 }
 
-inline void Server::write_response(Stream &strm, bool last_connection,
+inline bool Server::write_response(Stream &strm, bool last_connection,
                                    const Request &req, Response &res) {
   assert(res.status != -1);
 
   if (400 <= res.status && error_handler_) { error_handler_(req, res); }
 
   // Response line
-  strm.write_format("HTTP/1.1 %d %s\r\n", res.status,
-                    detail::status_message(res.status));
+  if (!strm.write_format("HTTP/1.1 %d %s\r\n", res.status,
+                         detail::status_message(res.status))) {
+    return false;
+  }
 
   // Headers
   if (last_connection || req.get_header_value("Connection") == "close") {
@@ -1600,7 +1797,7 @@ inline void Server::write_response(Stream &strm, bool last_connection,
 
   if (res.body.empty()) {
     if (!res.has_header("Content-Length")) {
-      if (res.streamcb) {
+      if (res.content_producer) {
         // Streamed response
         res.set_header("Transfer-Encoding", "chunked");
       } else {
@@ -1613,8 +1810,9 @@ inline void Server::write_response(Stream &strm, bool last_connection,
     const auto &encodings = req.get_header_value("Accept-Encoding");
     if (encodings.find("gzip") != std::string::npos &&
         detail::can_compress(res.get_header_value("Content-Type"))) {
-      detail::compress(res.body);
-      res.set_header("Content-Encoding", "gzip");
+      if (detail::compress(res.body)) {
+        res.set_header("Content-Encoding", "gzip");
+      }
     }
 #endif
 
@@ -1626,30 +1824,21 @@ inline void Server::write_response(Stream &strm, bool last_connection,
     res.set_header("Content-Length", length.c_str());
   }
 
-  detail::write_headers(strm, res);
+  if (!detail::write_headers(strm, res)) { return false; }
 
   // Body
   if (req.method != "HEAD") {
     if (!res.body.empty()) {
-      strm.write(res.body.c_str(), res.body.size());
-    } else if (res.streamcb) {
-      bool chunked_response = !res.has_header("Content-Length");
-      uint64_t offset = 0;
-      bool data_available = true;
-      while (data_available) {
-        std::string chunk = res.streamcb(offset);
-        offset += chunk.size();
-        data_available = !chunk.empty();
-        // Emit chunked response header and footer for each chunk
-        if (chunked_response)
-          chunk = detail::from_i_to_hex(chunk.size()) + "\r\n" + chunk + "\r\n";
-        if (strm.write(chunk.c_str(), chunk.size()) < 0) break; // Stop on error
-      }
+      if (!strm.write(res.body.c_str(), res.body.size())) { return false; }
+    } else if (res.content_producer) {
+      if (!detail::write_content_chunked(strm, res)) { return false; }
     }
   }
 
   // Log
   if (logger_) { logger_(req, res); }
+
+  return true;
 }
 
 inline bool Server::handle_file_request(Request &req, Response &res) {
@@ -1718,13 +1907,14 @@ inline bool Server::listen_internal() {
   is_running_ = true;
 
   for (;;) {
+    if (svr_sock_ == INVALID_SOCKET) {
+      // The server socket was closed by 'stop' method.
+      break;
+    }
+
     auto val = detail::select_read(svr_sock_, 0, 100000);
 
     if (val == 0) { // Timeout
-      if (svr_sock_ == INVALID_SOCKET) {
-        // The server socket was closed by 'stop' method.
-        break;
-      }
       continue;
     }
 
@@ -1801,8 +1991,10 @@ inline bool Server::dispatch_request(Request &req, Response &res,
   return false;
 }
 
-inline bool Server::process_request(Stream &strm, bool last_connection,
-                                    bool &connection_close) {
+inline bool
+Server::process_request(Stream &strm, bool last_connection,
+                        bool &connection_close,
+                        std::function<void(Request &)> setup_request) {
   const auto bufsiz = 2048;
   char buf[bufsiz];
 
@@ -1819,19 +2011,22 @@ inline bool Server::process_request(Stream &strm, bool last_connection,
   // Check if the request URI doesn't exceed the limit
   if (reader.size() > CPPHTTPLIB_REQUEST_URI_MAX_LENGTH) {
     res.status = 414;
-    write_response(strm, last_connection, req, res);
-    return true;
+    return write_response(strm, last_connection, req, res);
   }
 
   // Request line and headers
   if (!parse_request_line(reader.ptr(), req) ||
       !detail::read_headers(strm, req.headers)) {
     res.status = 400;
-    write_response(strm, last_connection, req, res);
-    return true;
+    return write_response(strm, last_connection, req, res);
   }
 
   if (req.get_header_value("Connection") == "close") {
+    connection_close = true;
+  }
+
+  if (req.version == "HTTP/1.0" &&
+      req.get_header_value("Connection") != "Keep-Alive") {
     connection_close = true;
   }
 
@@ -1839,25 +2034,13 @@ inline bool Server::process_request(Stream &strm, bool last_connection,
 
   // Body
   if (req.method == "POST" || req.method == "PUT" || req.method == "PATCH") {
-    bool exceed_payload_max_length = false;
-    if (!detail::read_content(strm, req, payload_max_length_,
-                              exceed_payload_max_length)) {
-      res.status = exceed_payload_max_length ? 413 : 400;
-      write_response(strm, last_connection, req, res);
-      return !exceed_payload_max_length;
+    if (!detail::read_content(
+            strm, req, payload_max_length_, res.status, Progress(),
+            [&](const char *buf, size_t n) { req.body.append(buf, n); })) {
+      return write_response(strm, last_connection, req, res);
     }
 
     const auto &content_type = req.get_header_value("Content-Type");
-
-    if (req.get_header_value("Content-Encoding") == "gzip") {
-#ifdef CPPHTTPLIB_ZLIB_SUPPORT
-      detail::decompress(req.body);
-#else
-      res.status = 415;
-      write_response(strm, last_connection, req, res);
-      return true;
-#endif
-    }
 
     if (!content_type.find("application/x-www-form-urlencoded")) {
       detail::parse_query_text(req.body, req.params);
@@ -1866,11 +2049,13 @@ inline bool Server::process_request(Stream &strm, bool last_connection,
       if (!detail::parse_multipart_boundary(content_type, boundary) ||
           !detail::parse_multipart_formdata(boundary, req.body, req.files)) {
         res.status = 400;
-        write_response(strm, last_connection, req, res);
-        return true;
+        return write_response(strm, last_connection, req, res);
       }
     }
   }
+
+  // TODO: Add additional request info
+  if (setup_request) { setup_request(req); }
 
   if (routing(req, res)) {
     if (res.status == -1) { res.status = 200; }
@@ -1878,8 +2063,7 @@ inline bool Server::process_request(Stream &strm, bool last_connection,
     res.status = 404;
   }
 
-  write_response(strm, last_connection, req, res);
-  return true;
+  return write_response(strm, last_connection, req, res);
 }
 
 inline bool Server::is_valid() const { return true; }
@@ -2027,18 +2211,18 @@ inline bool Client::process_request(Stream &strm, Request &req, Response &res,
 
   // Body
   if (req.method != "HEAD") {
-    bool exceed_payload_max_length = false;
-    if (!detail::read_content(strm, res, std::numeric_limits<uint64_t>::max(),
-                              exceed_payload_max_length, req.progress)) {
-      return false;
+    ContentReceiver out = [&](const char *buf, size_t n) {
+      res.body.append(buf, n);
+    };
+
+    if (res.content_receiver) {
+      out = [&](const char *buf, size_t n) { res.content_receiver(buf, n); };
     }
 
-    if (res.get_header_value("Content-Encoding") == "gzip") {
-#ifdef CPPHTTPLIB_ZLIB_SUPPORT
-      detail::decompress(res.body);
-#else
+    int dummy_status;
+    if (!detail::read_content(strm, res, std::numeric_limits<uint64_t>::max(),
+                              dummy_status, res.progress, out)) {
       return false;
-#endif
     }
   }
 
@@ -2067,9 +2251,31 @@ Client::Get(const char *path, const Headers &headers, Progress progress) {
   req.method = "GET";
   req.path = path;
   req.headers = headers;
-  req.progress = progress;
 
   auto res = std::make_shared<Response>();
+  res->progress = progress;
+
+  return send(req, *res) ? res : nullptr;
+}
+
+inline std::shared_ptr<Response> Client::Get(const char *path,
+                                             ContentReceiver content_receiver,
+                                             Progress progress) {
+  return Get(path, Headers(), content_receiver, progress);
+}
+
+inline std::shared_ptr<Response> Client::Get(const char *path,
+                                             const Headers &headers,
+                                             ContentReceiver content_receiver,
+                                             Progress progress) {
+  Request req;
+  req.method = "GET";
+  req.path = path;
+  req.headers = headers;
+
+  auto res = std::make_shared<Response>();
+  res->content_receiver = content_receiver;
+  res->progress = progress;
 
   return send(req, *res) ? res : nullptr;
 }
@@ -2125,10 +2331,49 @@ Client::Post(const char *path, const Headers &headers, const Params &params) {
     if (it != params.begin()) { query += "&"; }
     query += it->first;
     query += "=";
-    query += it->second;
+    query += detail::encode_url(it->second);
   }
 
   return Post(path, headers, query, "application/x-www-form-urlencoded");
+}
+
+inline std::shared_ptr<Response>
+Client::Post(const char *path, const MultipartFormDataItems &items) {
+  return Post(path, Headers(), items);
+}
+
+inline std::shared_ptr<Response>
+Client::Post(const char *path, const Headers &headers,
+             const MultipartFormDataItems &items) {
+  Request req;
+  req.method = "POST";
+  req.headers = headers;
+  req.path = path;
+
+  auto boundary = detail::make_multipart_data_boundary();
+
+  req.headers.emplace("Content-Type",
+                      "multipart/form-data; boundary=" + boundary);
+
+  for (const auto &item : items) {
+    req.body += "--" + boundary + "\r\n";
+    req.body += "Content-Disposition: form-data; name=\"" + item.name + "\"";
+    if (!item.filename.empty()) {
+      req.body += "; filename=\"" + item.filename + "\"";
+    }
+    req.body += "\r\n";
+    if (!item.content_type.empty()) {
+      req.body += "Content-Type: " + item.content_type + "\r\n";
+    }
+    req.body += "\r\n";
+    req.body += item.content + "\r\n";
+  }
+
+  req.body += "--" + boundary + "--\r\n";
+
+  auto res = std::make_shared<Response>();
+
+  return send(req, *res) ? res : nullptr;
 }
 
 inline std::shared_ptr<Response> Client::Put(const char *path,
@@ -2225,22 +2470,32 @@ namespace detail {
 template <typename U, typename V, typename T>
 inline bool
 read_and_close_socket_ssl(socket_t sock, size_t keep_alive_max_count,
-                          // TODO: OpenSSL 1.0.2 occasionally crashes...
-                          // The upcoming 1.1.0 is going to be thread safe.
                           SSL_CTX *ctx, std::mutex &ctx_mutex,
                           U SSL_connect_or_accept, V setup, T callback) {
   SSL *ssl = nullptr;
   {
     std::lock_guard<std::mutex> guard(ctx_mutex);
-
     ssl = SSL_new(ctx);
-    if (!ssl) { return false; }
+  }
+
+  if (!ssl) {
+    close_socket(sock);
+    return false;
   }
 
   auto bio = BIO_new_socket(sock, BIO_NOCLOSE);
   SSL_set_bio(ssl, bio, bio);
 
-  if (!setup(ssl)) { return false; }
+  if (!setup(ssl)) {
+    SSL_shutdown(ssl);
+    {
+      std::lock_guard<std::mutex> guard(ctx_mutex);
+      SSL_free(ssl);
+    }
+
+    close_socket(sock);
+    return false;
+  }
 
   bool ret = false;
 
@@ -2254,7 +2509,7 @@ read_and_close_socket_ssl(socket_t sock, size_t keep_alive_max_count,
         auto last_connection = count == 1;
         auto connection_close = false;
 
-        ret = callback(strm, last_connection, connection_close);
+        ret = callback(ssl, strm, last_connection, connection_close);
         if (!ret || connection_close) { break; }
 
         count--;
@@ -2262,21 +2517,47 @@ read_and_close_socket_ssl(socket_t sock, size_t keep_alive_max_count,
     } else {
       SSLSocketStream strm(sock, ssl);
       auto dummy_connection_close = false;
-      ret = callback(strm, true, dummy_connection_close);
+      ret = callback(ssl, strm, true, dummy_connection_close);
     }
-
-    SSL_shutdown(ssl);
-
-    {
-      std::lock_guard<std::mutex> guard(ctx_mutex);
-      SSL_free(ssl);
-    }
-
-    close_socket(sock);
   }
+
+  SSL_shutdown(ssl);
+  {
+    std::lock_guard<std::mutex> guard(ctx_mutex);
+    SSL_free(ssl);
+  }
+
+  close_socket(sock);
 
   return ret;
 }
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+static std::shared_ptr<std::vector<std::mutex>> openSSL_locks_;
+
+class SSLThreadLocks {
+public:
+  SSLThreadLocks() {
+    openSSL_locks_ =
+        std::make_shared<std::vector<std::mutex>>(CRYPTO_num_locks());
+    CRYPTO_set_locking_callback(locking_callback);
+  }
+
+  ~SSLThreadLocks() { CRYPTO_set_locking_callback(nullptr); }
+
+private:
+  static void locking_callback(int mode, int type, const char * /*file*/,
+                               int /*line*/) {
+    auto &locks = *openSSL_locks_;
+    if (mode & CRYPTO_LOCK) {
+      locks[type].lock();
+    } else {
+      locks[type].unlock();
+    }
+  }
+};
+
+#endif
 
 class SSLInit {
 public:
@@ -2286,6 +2567,11 @@ public:
   }
 
   ~SSLInit() { ERR_free_strings(); }
+
+private:
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+  SSLThreadLocks thread_init_;
+#endif
 };
 
 static SSLInit sslinit_;
@@ -2299,7 +2585,12 @@ inline SSLSocketStream::SSLSocketStream(socket_t sock, SSL *ssl)
 inline SSLSocketStream::~SSLSocketStream() {}
 
 inline int SSLSocketStream::read(char *ptr, size_t size) {
-  return SSL_read(ssl_, ptr, size);
+  if (SSL_pending(ssl_) > 0 ||
+      detail::select_read(sock_, CPPHTTPLIB_READ_TIMEOUT_SECOND,
+                          CPPHTTPLIB_READ_TIMEOUT_USECOND) > 0) {
+    return SSL_read(ssl_, ptr, size);
+  }
+  return -1;
 }
 
 inline int SSLSocketStream::write(const char *ptr, size_t size) {
@@ -2315,8 +2606,9 @@ inline std::string SSLSocketStream::get_remote_addr() const {
 }
 
 // SSL HTTP server implementation
-inline SSLServer::SSLServer(const char *cert_path,
-                            const char *private_key_path) {
+inline SSLServer::SSLServer(const char *cert_path, const char *private_key_path,
+                            const char *client_ca_cert_file_path,
+                            const char *client_ca_cert_dir_path) {
   ctx_ = SSL_CTX_new(SSLv23_server_method());
 
   if (ctx_) {
@@ -2334,6 +2626,20 @@ inline SSLServer::SSLServer(const char *cert_path,
             1) {
       SSL_CTX_free(ctx_);
       ctx_ = nullptr;
+    } else if (client_ca_cert_file_path || client_ca_cert_dir_path) {
+      // if (client_ca_cert_file_path) {
+      //   auto list = SSL_load_client_CA_file(client_ca_cert_file_path);
+      //   SSL_CTX_set_client_CA_list(ctx_, list);
+      // }
+
+      SSL_CTX_load_verify_locations(ctx_, client_ca_cert_file_path,
+                                    client_ca_cert_dir_path);
+
+      SSL_CTX_set_verify(
+          ctx_,
+          SSL_VERIFY_PEER |
+              SSL_VERIFY_FAIL_IF_NO_PEER_CERT, // SSL_VERIFY_CLIENT_ONCE,
+          nullptr);
     }
   }
 }
@@ -2348,13 +2654,17 @@ inline bool SSLServer::read_and_close_socket(socket_t sock) {
   return detail::read_and_close_socket_ssl(
       sock, keep_alive_max_count_, ctx_, ctx_mutex_, SSL_accept,
       [](SSL * /*ssl*/) { return true; },
-      [this](Stream &strm, bool last_connection, bool &connection_close) {
-        return process_request(strm, last_connection, connection_close);
+      [this](SSL *ssl, Stream &strm, bool last_connection,
+             bool &connection_close) {
+        return process_request(strm, last_connection, connection_close,
+                               [&](Request &req) { req.ssl = ssl; });
       });
 }
 
 // SSL HTTP client implementation
-inline SSLClient::SSLClient(const char *host, int port, time_t timeout_sec)
+inline SSLClient::SSLClient(const char *host, int port, time_t timeout_sec,
+                            const char *client_cert_path,
+                            const char *client_key_path)
     : Client(host, port, timeout_sec) {
   ctx_ = SSL_CTX_new(SSLv23_client_method());
 
@@ -2362,6 +2672,15 @@ inline SSLClient::SSLClient(const char *host, int port, time_t timeout_sec)
                 [&](const char *b, const char *e) {
                   host_components_.emplace_back(std::string(b, e));
                 });
+  if (client_cert_path && client_key_path) {
+    if (SSL_CTX_use_certificate_file(ctx_, client_cert_path,
+                                     SSL_FILETYPE_PEM) != 1 ||
+        SSL_CTX_use_PrivateKey_file(ctx_, client_key_path, SSL_FILETYPE_PEM) !=
+            1) {
+      SSL_CTX_free(ctx_);
+      ctx_ = nullptr;
+    }
+  }
 }
 
 inline SSLClient::~SSLClient() {
@@ -2370,8 +2689,10 @@ inline SSLClient::~SSLClient() {
 
 inline bool SSLClient::is_valid() const { return ctx_; }
 
-inline void SSLClient::set_ca_cert_path(const char *ca_cert_path) {
-  ca_cert_path_ = ca_cert_path;
+inline void SSLClient::set_ca_cert_path(const char *ca_cert_file_path,
+                                        const char *ca_cert_dir_path) {
+  if (ca_cert_file_path) { ca_cert_file_path_ = ca_cert_file_path; }
+  if (ca_cert_dir_path) { ca_cert_dir_path_ = ca_cert_dir_path; }
 }
 
 inline void SSLClient::enable_server_certificate_verification(bool enabled) {
@@ -2389,11 +2710,11 @@ inline bool SSLClient::read_and_close_socket(socket_t sock, Request &req,
          detail::read_and_close_socket_ssl(
              sock, 0, ctx_, ctx_mutex_,
              [&](SSL *ssl) {
-               if (ca_cert_path_.empty()) {
+               if (ca_cert_file_path_.empty()) {
                  SSL_CTX_set_verify(ctx_, SSL_VERIFY_NONE, nullptr);
                } else {
-                 if (!SSL_CTX_load_verify_locations(ctx_, ca_cert_path_.c_str(),
-                                                    nullptr)) {
+                 if (!SSL_CTX_load_verify_locations(
+                         ctx_, ca_cert_file_path_.c_str(), nullptr)) {
                    return false;
                  }
                  SSL_CTX_set_verify(ctx_, SSL_VERIFY_PEER, nullptr);
@@ -2410,7 +2731,11 @@ inline bool SSLClient::read_and_close_socket(socket_t sock, Request &req,
 
                  if (server_cert == nullptr) { return false; }
 
-                 if (!verify_host(server_cert)) { return false; }
+                 if (!verify_host(server_cert)) {
+                   X509_free(server_cert);
+                   return false;
+                 }
+                 X509_free(server_cert);
                }
 
                return true;
@@ -2419,7 +2744,7 @@ inline bool SSLClient::read_and_close_socket(socket_t sock, Request &req,
                SSL_set_tlsext_host_name(ssl, host_.c_str());
                return true;
              },
-             [&](Stream &strm, bool /*last_connection*/,
+             [&](SSL * /*ssl*/, Stream &strm, bool /*last_connection*/,
                  bool &connection_close) {
                return process_request(strm, req, res, connection_close);
              });
@@ -2471,8 +2796,8 @@ SSLClient::verify_host_with_subject_alt_name(X509 *server_cert) const {
     addr_len = sizeof(struct in_addr);
   }
 
-  auto alt_names =
-      X509_get_ext_d2i(server_cert, NID_subject_alt_name, nullptr, nullptr);
+  auto alt_names = static_cast<const struct stack_st_GENERAL_NAME *>(
+      X509_get_ext_d2i(server_cert, NID_subject_alt_name, nullptr, nullptr));
 
   if (alt_names) {
     auto dsn_matched = false;
@@ -2483,7 +2808,7 @@ SSLClient::verify_host_with_subject_alt_name(X509 *server_cert) const {
     for (auto i = 0; i < count && !dsn_matched; i++) {
       auto val = sk_GENERAL_NAME_value(alt_names, i);
       if (val->type == type) {
-        auto name = (const char *)ASN1_STRING_data(val->d.ia5);
+        auto name = (const char *)ASN1_STRING_get0_data(val->d.ia5);
         auto name_len = (size_t)ASN1_STRING_length(val->d.ia5);
 
         if (strlen(name) == name_len) {
@@ -2525,9 +2850,7 @@ inline bool SSLClient::verify_host_with_common_name(X509 *server_cert) const {
 
 inline bool SSLClient::check_host_name(const char *pattern,
                                        size_t pattern_len) const {
-  if (host_.size() == pattern_len && host_ == pattern) {
-    return true;
-  }
+  if (host_.size() == pattern_len && host_ == pattern) { return true; }
 
   // Wildcard match
   // https://bugs.launchpad.net/ubuntu/+source/firefox-3.0/+bug/376484
