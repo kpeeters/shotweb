@@ -53,15 +53,41 @@ There are a few related projects, mostly unmaintained, which inspired Shotweb::
 Movie re-encoding
 -----------------
 
-    ffmpeg -i IMG_0841.MOV -c:v libx264 -movflags faststart -crf 23 -maxrate 16M -bufsize 32M -vf "scale=960:-1" outfile.mp4
+To re-encode a movie for a maximal bitrate of 16M, do something like::
 
+    ffmpeg -i IMG_0841.MOV -c:v libx264 -movflags faststart -crf 23 -maxrate 16M -bufsize 32M -vf "scale=960:-1" 16M/IMG_0841.MOV
+
+The server will automatically pick up when there is a re-encoded movie
+in the `16M` subdirectory available.
+
+See [https://slhck.info/video/2017/03/01/rate-control.html] for useful
+info on the various ways to reduce bandwidth.
+
+
+TODO
+----
+
+* Re-load database when it has been updated externally.
+* Script to re-encode videos for streaming.
+* Log all access into database table and allow viewing by admin.
+* Document database files used.
+* Edit users and rights.
 
 
 Used libraries 
 --------------
 
-* opencv for image manipulation and thumbnail generation.
-* sqlite_modern_cpp to access e.g. shotwell's sqlite database.
-* nlohmann/json for json manipulation.
-* httplib.h [] for web server functionality.
-* miniz-cpp [https://github.com/tfussell/miniz-cpp.git] to create zip files.
+* OpenCV [https://opencv.org]
+  For image manipulation and photo/video thumbnail generation.
+
+* sqlite_modern_cpp [https://github.com/SqliteModernCpp/sqlite_modern_cpp] 
+  Used to access e.g. shotwell's sqlite database.
+  
+* nlohmann/json [https://github.com/nlohmann/json]
+  For json manipulation.
+
+* httplib.h [https://github.com/yhirose/cpp-httplib] 
+  For web server functionality.
+
+* miniz-cpp [https://github.com/tfussell/miniz-cpp.git] 
+  To create zip files.
