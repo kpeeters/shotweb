@@ -105,7 +105,7 @@ class Server : public httplib::Server {
 			public:
 				StreamHandler(std::string);
 
-				static const uint64_t chunk_size=32*1024;
+				static const uint64_t chunk_size=1024*1024;
 
 				std::string       filename;
 				std::ifstream     vf;
