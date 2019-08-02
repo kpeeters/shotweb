@@ -109,6 +109,7 @@ class Server : public httplib::Server {
 
 				std::string       filename;
 				std::ifstream     vf;
+				std::ofstream     of; // for testing
 				std::streamsize   size;				
 				bool              finished;
 				std::vector<char> data;
