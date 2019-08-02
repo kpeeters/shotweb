@@ -107,10 +107,11 @@ class Server : public httplib::Server {
 
 				static const uint64_t chunk_size=32*1024;
 
-				std::string    filename;
-				std::ifstream  vf;
-				bool           finished;
-				char           data[chunk_size];
+				std::string       filename;
+				std::ifstream     vf;
+				std::streamsize   size;				
+				bool              finished;
+				std::vector<char> data;
 		};
 		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
 
