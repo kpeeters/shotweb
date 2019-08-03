@@ -61,9 +61,11 @@ typedef int socket_t;
 
 #include <assert.h>
 #include <atomic>
+#include <condition_variable>
 #include <fcntl.h>
 #include <fstream>
 #include <functional>
+#include <list>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -101,6 +103,7 @@ inline const unsigned char *ASN1_STRING_get0_data(const ASN1_STRING *asn1) {
 #define CPPHTTPLIB_REQUEST_URI_MAX_LENGTH 8192
 #define CPPHTTPLIB_PAYLOAD_MAX_LENGTH (std::numeric_limits<size_t>::max)()
 #define CPPHTTPLIB_RECV_BUFSIZ size_t(4096u)
+#define CPPHTTPLIB_THREAD_POOL_COUNT 8
 
 namespace httplib {
 
@@ -207,7 +210,8 @@ struct Response {
   void set_content(const char *s, size_t n, const char *content_type);
   void set_content(const std::string &s, const char *content_type);
   void set_content_producer(uint64_t length, ContentProvider producer);
-  void set_chunked_content_producer(std::function<std::string(uint64_t offset)> producer);
+  void set_chunked_content_producer(
+      std::function<std::string(uint64_t offset)> producer);
 
   void set_content_provider(
       uint64_t length,
@@ -264,6 +268,134 @@ private:
   std::string buffer;
 };
 
+class TaskQueue {
+public:
+  TaskQueue() {}
+  virtual ~TaskQueue() {}
+  virtual void enqueue(std::function<void(void)> fn) = 0;
+  virtual void shutdown() = 0;
+};
+
+#if CPPHTTPLIB_THREAD_POOL_COUNT > 0
+class ThreadPool : public TaskQueue {
+public:
+  ThreadPool(size_t n) : shutdown_(false), remaining_(0) {
+    while (n) {
+      auto t = std::make_shared<std::thread>(worker(*this));
+      threads_.push_back(t);
+      n--;
+    }
+  }
+
+  ThreadPool(const ThreadPool &) = delete;
+  virtual ~ThreadPool() {}
+
+  virtual void enqueue(std::function<void()> fn) override {
+    std::unique_lock<std::mutex> lock(mutex_);
+    jobs_.push_back(fn);
+    cond_.notify_one();
+  }
+
+  virtual void shutdown() override {
+    // Handle all remaining jobs...
+    for (;;) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (jobs_.empty()) break;
+      cond_.notify_one();
+    }
+
+    // Stop all worker threads...
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      shutdown_ = true;
+      remaining_ = threads_.size();
+    }
+
+    for (;;) {
+      std::unique_lock<std::mutex> lock(mutex_);
+      if (!remaining_) break;
+      cond_.notify_all();
+    }
+
+    // Join...
+    for (auto t : threads_) {
+      t->join();
+    }
+  }
+
+private:
+  struct worker {
+    worker(ThreadPool &pool) : pool_(pool) {}
+
+    void operator()() {
+      for (;;) {
+        std::unique_lock<std::mutex> lock(pool_.mutex_);
+
+        pool_.cond_.wait(
+            lock, [&] { return !pool_.jobs_.empty() || pool_.shutdown_; });
+
+        if (pool_.shutdown_) { break; }
+
+        auto fn = pool_.jobs_.front();
+        pool_.jobs_.pop_front();
+
+        assert(true == (bool)fn);
+        fn();
+      }
+
+      std::unique_lock<std::mutex> lock(pool_.mutex_);
+      pool_.remaining_--;
+    }
+
+    ThreadPool &pool_;
+  };
+  friend struct worker;
+
+  std::vector<std::shared_ptr<std::thread>> threads_;
+  std::list<std::function<void()>> jobs_;
+
+  bool shutdown_;
+  size_t remaining_;
+
+  std::condition_variable cond_;
+  std::mutex mutex_;
+};
+#else
+class Threads : public TaskQueue {
+public:
+  Threads() : running_threads_(0) {}
+  virtual ~Threads() {}
+
+  virtual void enqueue(std::function<void(void)> fn) override {
+    std::thread([=]() {
+      {
+        std::lock_guard<std::mutex> guard(running_threads_mutex_);
+        running_threads_++;
+      }
+
+      fn();
+
+      {
+        std::lock_guard<std::mutex> guard(running_threads_mutex_);
+        running_threads_--;
+      }
+    }).detach();
+  }
+
+  virtual void shutdown() override {
+    for (;;) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      std::lock_guard<std::mutex> guard(running_threads_mutex_);
+      if (!running_threads_) { break; }
+    }
+  }
+
+private:
+  std::mutex running_threads_mutex_;
+  int running_threads_;
+};
+#endif
+
 class Server {
 public:
   typedef std::function<void(const Request &, Response &)> Handler;
@@ -290,8 +422,7 @@ public:
 
   void set_keep_alive_max_count(size_t count);
   void set_payload_max_length(uint64_t length);
-  void set_thread_pool_size(int n);
-  
+
   int bind_to_any_port(const char *host, int socket_flags = 0);
   bool listen_after_bind();
 
@@ -299,6 +430,8 @@ public:
 
   bool is_running() const;
   void stop();
+
+  std::function<TaskQueue *(void)> new_task_queue;
 
 protected:
   bool process_request(Stream &strm, bool last_connection,
@@ -337,10 +470,6 @@ private:
   Handlers options_handlers_;
   Handler error_handler_;
   Logger logger_;
-
-  // TODO: Use thread pool...
-  std::mutex running_threads_mutex_;
-  int running_threads_;
 };
 
 class Client {
@@ -1561,6 +1690,18 @@ get_range_offset_and_length(const Request &req, uint64_t content_length,
   return std::make_pair(r.first, r.second - r.first + 1);
 }
 
+inline std::string make_content_range_header_field(uint64_t offset,
+                                                   uint64_t length,
+                                                   uint64_t content_length) {
+  std::string field = "bytes ";
+  field += std::to_string(offset);
+  field += "-";
+  field += std::to_string(offset + length - 1);
+  field += "/";
+  field += std::to_string(content_length);
+  return field;
+}
+
 template <typename SToken, typename CToken, typename Content>
 bool process_multipart_ranges_data(const Request &req, Response &res,
                                    const std::string &boundary,
@@ -1581,12 +1722,8 @@ bool process_multipart_ranges_data(const Request &req, Response &res,
     auto offset = offsets.first;
     auto length = offsets.second;
 
-    ctoken("Content-Range: bytes ");
-    stoken(std::to_string(offset));
-    ctoken("-");
-    stoken(std::to_string(offset + length - 1));
-    ctoken("/");
-    stoken(std::to_string(res.body.size()));
+    ctoken("Content-Range: ");
+    stoken(make_content_range_header_field(offset, length, res.body.size()));
     ctoken("\r\n");
     ctoken("\r\n");
     if (!content(offset, length)) { return false; }
@@ -1649,12 +1786,12 @@ inline bool write_multipart_ranges_data(Stream &strm, const Request &req,
       });
 }
 
-inline std::pair<uint64_t, uint64_t> get_range_offset_and_length(const Request& req, const Response& res, size_t index) {
+inline std::pair<uint64_t, uint64_t>
+get_range_offset_and_length(const Request &req, const Response &res,
+                            size_t index) {
   auto r = req.ranges[index];
 
-  if (r.second == -1) {
-    r.second = res.content_length - 1;
-  }
+  if (r.second == -1) { r.second = res.content_length - 1; }
 
   return std::make_pair(r.first, r.second - r.first + 1);
 }
@@ -1695,6 +1832,7 @@ make_basic_authentication_header(const std::string &username,
   auto field = "Basic " + detail::base64_encode(username + ":" + password);
   return std::make_pair("Authorization", field);
 }
+
 // Request implementation
 inline bool Request::has_header(const char *key) const {
   return detail::has_header(headers, key);
@@ -1890,10 +2028,17 @@ inline const std::string &BufferStream::get_buffer() const { return buffer; }
 inline Server::Server()
     : keep_alive_max_count_(CPPHTTPLIB_KEEPALIVE_MAX_COUNT),
       payload_max_length_(CPPHTTPLIB_PAYLOAD_MAX_LENGTH), is_running_(false),
-      svr_sock_(INVALID_SOCKET), running_threads_(0) {
+      svr_sock_(INVALID_SOCKET) {
 #ifndef _WIN32
   signal(SIGPIPE, SIG_IGN);
 #endif
+  new_task_queue = [] {
+#if CPPHTTPLIB_THREAD_POOL_COUNT > 0
+    return new ThreadPool(CPPHTTPLIB_THREAD_POOL_COUNT);
+#else
+    return new Threads();
+#endif
+  };
 }
 
 inline Server::~Server() {}
@@ -2046,7 +2191,11 @@ inline bool Server::write_response(Stream &strm, bool last_connection,
       } else if (req.ranges.size() == 1) {
         auto offsets =
             detail::get_range_offset_and_length(req, res.content_length, 0);
+        auto offset = offsets.first;
         length = offsets.second;
+        auto content_range = detail::make_content_range_header_field(
+            offset, length, res.content_length);
+        res.set_header("Content-Range", content_range);
       } else {
         length = detail::get_multipart_ranges_data_length(req, res, boundary,
                                                           content_type);
@@ -2067,6 +2216,9 @@ inline bool Server::write_response(Stream &strm, bool last_connection,
           detail::get_range_offset_and_length(req, res.body.size(), 0);
       auto offset = offsets.first;
       auto length = offsets.second;
+      auto content_range = detail::make_content_range_header_field(
+          offset, length, res.body.size());
+      res.set_header("Content-Range", content_range);
       res.body = res.body.substr(offset, length);
     } else {
       res.body =
@@ -2192,58 +2344,42 @@ inline int Server::bind_internal(const char *host, int port, int socket_flags) {
 
 inline bool Server::listen_internal() {
   auto ret = true;
-
   is_running_ = true;
 
-  for (;;) {
-    if (svr_sock_ == INVALID_SOCKET) {
-      // The server socket was closed by 'stop' method.
-      break;
-    }
+  {
+    std::unique_ptr<TaskQueue> task_queue(new_task_queue());
 
-    auto val = detail::select_read(svr_sock_, 0, 100000);
-
-    if (val == 0) { // Timeout
-      continue;
-    }
-
-    socket_t sock = accept(svr_sock_, nullptr, nullptr);
-
-    if (sock == INVALID_SOCKET) {
-      if (svr_sock_ != INVALID_SOCKET) {
-        detail::close_socket(svr_sock_);
-        ret = false;
-      } else {
-        ; // The server socket was closed by user.
-      }
-      break;
-    }
-
-    // TODO: Use thread pool...
-    std::thread([=]() {
-      {
-        std::lock_guard<std::mutex> guard(running_threads_mutex_);
-        running_threads_++;
+    for (;;) {
+      if (svr_sock_ == INVALID_SOCKET) {
+        // The server socket was closed by 'stop' method.
+        break;
       }
 
-      read_and_close_socket(sock);
+      auto val = detail::select_read(svr_sock_, 0, 100000);
 
-      {
-        std::lock_guard<std::mutex> guard(running_threads_mutex_);
-        running_threads_--;
+      if (val == 0) { // Timeout
+        continue;
       }
-    }).detach();
-  }
 
-  // TODO: Use thread pool...
-  for (;;) {
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    std::lock_guard<std::mutex> guard(running_threads_mutex_);
-    if (!running_threads_) { break; }
+      socket_t sock = accept(svr_sock_, nullptr, nullptr);
+
+      if (sock == INVALID_SOCKET) {
+        if (svr_sock_ != INVALID_SOCKET) {
+          detail::close_socket(svr_sock_);
+          ret = false;
+        } else {
+          ; // The server socket was closed by user.
+        }
+        break;
+      }
+
+      task_queue->enqueue([=]() { read_and_close_socket(sock); });
+    }
+
+    task_queue->shutdown();
   }
 
   is_running_ = false;
-
   return ret;
 }
 
