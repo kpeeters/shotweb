@@ -10,6 +10,10 @@ Database::Database(const std::string& name, const std::string& oldroot, const st
 	: oldroot(oldroot), newroot(newroot)
 	{
 	config.flags=sqlite::OpenFlags::READONLY;
+
+	// FIXME: when we find a database modification through the file system
+	// notificator, re-create the database object so it closes/reopens the
+	// database and invalidates caches.
 	db = std::make_unique<sqlite::database>(name, config);
 	}
 
@@ -28,7 +32,6 @@ std::vector<Database::Event> Database::get_events(int event_id)
 	{
 	std::vector<Database::Event> results;
 
-	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
 
 	// The following query produces the correct list of event thumbnails, but they are not
@@ -75,7 +78,6 @@ std::vector<Database::Event> Database::get_events(int event_id)
 
 Database::Photo Database::get_photo(int photo_id) 
 	{
-	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
 	ss << "select id,filename,orientation,event_id from PhotoTable where id='" << photo_id << "'";
 	std::string query = ss.str();
@@ -96,7 +98,6 @@ Database::Photo Database::get_photo(int photo_id)
 
 Database::Photo Database::get_video(int video_id) 
 	{
-	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
 	ss << "select id,filename,event_id from VideoTable where id='" << video_id << "'";
 	std::string query = ss.str();
@@ -120,7 +121,6 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 	{
 	std::vector<Database::Photo> results;
 
-	sqlite3_stmt *statement=0;
 	std::ostringstream ss;
 	ss << "select id,filename,orientation,event_id from PhotoTable where event_id='" << event_id << "' "
 		<< "order by time_created, timestamp";

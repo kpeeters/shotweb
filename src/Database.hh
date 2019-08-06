@@ -11,12 +11,16 @@
 #include <vector>
 #include <sqlite_modern_cpp.h>
 
+/// Class wrapping a Shotwell photo database, hiding all SQL
+/// implementation details and allowing for simple retrieval of events
+/// or single photo/video entries.
+
 class Database {
 	public:
 		Database(const std::string& db, const std::string& oldroot, const std::string& newroot);
 		~Database();
-		
-		// Retrieve a list of all events.
+
+		/// Descriptor for a shotwell event.
 		class Event {
 			public:
 				int         id;
@@ -27,10 +31,14 @@ class Database {
 				uint32_t    start_timestamp;
 				uint32_t    end_timestamp;
 		};
+		/// Retrieve a list of all events.
 		std::vector<Event> get_events(int event_id=-1);
+
+		/// Retrieve a single event given its id.
 		Event              get_event(int event_id);
 
-		// Retrieve a list of all photos in an event.
+		/// Descriptor for a photo or video entry (not the actual photo
+		/// or video).
 		class Photo {
 			public:
 				int         id;
@@ -39,8 +47,13 @@ class Database {
 				int         event_id;
 				bool        is_video;
 		};
+		/// Retrieve a list of all photos in an event.
 		std::vector<Photo> get_photos(int event_id);
+
+		/// Retrieve a single photo descriptor given its id.
 		Photo              get_photo(int photo_id);
+
+		/// Retrieve a single video descriptor given its id.
 		Photo              get_video(int video_id);
 
 	private:
