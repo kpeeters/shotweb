@@ -4,6 +4,8 @@ Shotweb: web server for shotwell photo databases
 
 Written by Kasper Peeters. Licensed under the GPL.
 
+*WARNING* not yet completely useable for others!
+
 
 Shotweb is a simple, modern and compact C++ server to share Shotwell
 [https://wiki.gnome.org/Apps/Shotwell] photo albums via the web.
