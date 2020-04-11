@@ -37,10 +37,11 @@ In the pipeline:
 * Download single photos or entire events as zip files.
 
 
-There are a few related projects, mostly unmaintained, which inspired Shotweb::
+There are a few related projects, mostly unmaintained, which inspired
+Shotweb::
 
-    http://www.jonh.net/~jonh/shotgo/README.html
-    https://github.com/vmassuchetto/shotwell-web-client/tree/master/shotwell_web_client
+* [http://www.jonh.net/~jonh/shotgo/README.html]
+* [https://github.com/vmassuchetto/shotwell-web-client/tree/master/shotwell_web_client]
 
 
 
