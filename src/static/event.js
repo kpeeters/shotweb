@@ -47,14 +47,14 @@ var fill_event_display = function(data) {
 		  });
 		  $("#single_shot img").attr('src', img);
 	 });
-	 $("#button_next").on('click', function() {
+    var next_photo = function() {
 		  // Find the next photo.
 		  var this_photo     = $("#single_shot img").attr("src");
-		  console.log(this_photo);
+//		  console.log(this_photo);
 		  var this_thumbnail = $(".fancybox[href='"+this_photo+"']");
-		  console.log(this_thumbnail);
+//		  console.log(this_thumbnail);
 		  var next_photo = $(this_thumbnail).parent().next().find("a");
-		  console.log(next_photo);
+//		  console.log(next_photo);
 		  if(next_photo.length==1) {
 				$("#single_shot img").unbind('load');
 				$("#spinner").show();
@@ -63,15 +63,15 @@ var fill_event_display = function(data) {
 				});
 				$("#single_shot img").attr('src', $(next_photo).attr('href'));
 		  }
-	 });
-	 $("#button_prev").on('click', function() {
+	 };
+    var prev_photo = function() {
 		  // Find the previous photo.
 		  var this_photo     = $("#single_shot img").attr("src");
-		  console.log(this_photo);
+//		  console.log(this_photo);
 		  var this_thumbnail = $(".fancybox[href='"+this_photo+"']");
-		  console.log(this_thumbnail);
+//		  console.log(this_thumbnail);
 		  var prev_photo = $(this_thumbnail).parent().prev().find("a");
-		  console.log(prev_photo);
+//		  console.log(prev_photo);
 		  if(prev_photo.length==1) {
 				$("#single_shot img").unbind('load');
 				$("#spinner").show();
@@ -80,7 +80,19 @@ var fill_event_display = function(data) {
 				});
 				$("#single_shot img").attr('src', $(prev_photo).attr('href'));
 		  }
-	 });
+	 };
+    
+    $("#button_next").on('click', next_photo);
+	 $("#button_prev").on('click', prev_photo);
+    $(document).on("keydown", function(event) {
+        if(event.which==39) { // right
+            next_photo();
+        }
+        if(event.which==37) { // left
+            prev_photo();
+        }
+    });
+    
 	 $("#button_close").on('click', function(e) {
 				$("#slide_controls").hide();
 				var width=$(window).width();
@@ -200,8 +212,10 @@ $(document).ready( function() {
     
 	 $("#fullscreen").on('click', function(e) {
 		  e.preventDefault();
-		  // http://www.sitepoint.com/html5-full-screen-api/
-		  document.getElementById("app").webkitRequestFullScreen();
-		  $("#fullscreen").hide();
+        if(document.fullscreenElement==null) {
+		      document.getElementById("app").requestFullscreen();
+        } else {
+		      document.exitFullscreen();
+        }
 	 });
 });

@@ -125,11 +125,95 @@ var load_account_info = function() {
                 $("#download").css({"visibility": "visible"});
             if(data["allowed_share"])
                 $("#share").css({"visibility": "visible"});
+            $("#events_header").html( data["title"] );
 		  },
 		  error: function (xhr, desc, err)
 		  {
 		  }
 	 });
+};
+
+// Update a record in the accounts database.
+
+var update_account = function(id, name, password) {
+    console.log("update: "+id+", "+name);
+    var json={};
+    json["action"]="update_account";
+    json["id"]=id;
+    json["name"]=name;
+    json["password"]=password;
+    var mydata = JSON.stringify(json);
+	 $.ajax({
+		  url: "json",
+		  type: "POST",
+		  dataType: "JSON",
+		  data: mydata,
+		  processData: false,
+		  contentType: "application/json",
+		  success: function (data, status) {
+        },
+        error: function(xhr, desc, err) {
+        }
+    });    
+};
+
+// Get the accounts database.
+
+var load_accounts_db = function() {
+    var json={};
+    json["action"]="accounts_db";
+    var mydata = JSON.stringify(json);
+	 $.ajax({
+		  url: "json",
+		  type: "POST",
+		  dataType: "JSON",
+		  data: mydata,
+		  processData: false,
+		  contentType: "application/json",
+		  success: function (data, status)
+		  {
+            // console.log(data);
+            $("#accounts_table").empty();
+            for(var account of data) {
+                $("#accounts_table").append("<tr id='account_"+account.id+"'><td>"+account.id+"</td>"
+                                            + "<td><input type='text' class='name' name='"+account.id+"'></td></tr>");
+                $("#account_"+account.id+" .name").val(account.name).on('change', function(event) {
+                    console.log(event.currentTarget);
+                    update_account(event.currentTarget.name, event.currentTarget.value, "");
+                });
+            }
+		  },
+		  error: function (xhr, desc, err)
+		  {
+		  }
+	 });
+};
+
+// Add a new empty account to the accounts db.
+
+var add_account = function() {
+    var json={};
+    json["action"]="add_account";
+    var mydata = JSON.stringify(json);
+    return new Promise(function(resolve, reject) {
+	     $.ajax({
+		      url: "json",
+		      type: "POST",
+		      dataType: "JSON",
+		      data: mydata,
+		      processData: false,
+		      contentType: "application/json",
+		      success: function (data, status)
+		      {
+                console.log(data);
+                resolve();
+		      },
+		      error: function (xhr, desc, err)
+		      {
+                reject();
+		      }
+	     });
+    });
 };
 
 
@@ -148,7 +232,22 @@ $(document).ready( function() {
     $("#ok").on('click', function(e) {
         $("#events_dialog").css({'visibility': 'hidden'});
     });
-    
+
+    // Accounts admin panel.
+    $("#admin").on('click', function(e) {
+        $("#accounts_dialog").css({'visibility': 'visible'});
+        load_accounts_db();
+    });
+    $("#admin_ok").on('click', function(e) {
+        $("#accounts_dialog").css({'visibility': 'hidden'});
+    });
+    $("#admin_add_account").on('click', function(e) {
+        add_account().then( function() {
+            load_accounts_db();
+        });
+    });
+
+    // Fullscreen functionality.
 	 $("#fullscreen").on('click', function(e) {
 		  e.preventDefault();
 		  // http://www.sitepoint.com/html5-full-screen-api/

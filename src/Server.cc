@@ -27,14 +27,12 @@ Server::StreamHandler::StreamHandler(std::string fn)
 	vf.seekg(0, std::ios::beg);	
 	}
 
-Server::Server(const std::string& dbpath, const std::string& authdbpath, const std::string& htmlpath, int port,
-					const std::string& oldroot, const std::string& newroot)
-	: db(dbpath, oldroot, newroot),
-	  authdbpath(authdbpath),
-	  htmlpath(htmlpath),
-	  port(port),
-	  cachepath("/home/kasper/.cache/shotwell/thumbs/thumbs360/")
+Server::Server(const nlohmann::json& config)
+	: db(config.value("photo.db", ""), config.value("old_root", ""), config.value("new_root", "")),
+	  config(config)
 	{
+	// Read configuration.
+	
 	try {
 		init_authorisations();
 		}
@@ -78,7 +76,9 @@ Server::~Server()
 
 void Server::init_authorisations()
 	{
-	sqlite::database db(authdbpath);
+	std::cerr << logstamp(0) << "auth.db path: " << config.value("auth.db", "") << std::endl;
+	
+	sqlite::database db(config.value("auth.db", ""));
 	std::string query;
 
 	// Ensure tables exist.
@@ -121,14 +121,14 @@ void Server::init_authorisations()
 	std::cerr << logstamp() << "read " << share_links.size() << " sharing tokens." << std::endl;
 	}
 
-void Server::register_user(const std::string& user, const std::string& password, bool admin) 
+int Server::register_user(const std::string& user, const std::string& password, bool admin) 
 	{
 	Authorisation auth;
 	auth.name=user;
 	auth.password=password;
 	auth.root=admin;
 
-	sqlite::database db(authdbpath);
+	sqlite::database db(config.value("auth.db", ""));
 	db << "insert into users (name, password, root) values (?, ?, ?);"
 		<< auth.name
 		<< auth.password
@@ -136,13 +136,15 @@ void Server::register_user(const std::string& user, const std::string& password,
 
 	auth.id=db.last_insert_rowid();
 	users[auth.id]=auth;
+
+	return auth.id;
 	}
 
 Server::Token Server::register_share_link(int event_id)
 	{
 	std::string token = boost::uuids::to_string(boost::uuids::random_generator()());
 	share_links[token]=event_id;
-	sqlite::database db(authdbpath);
+	sqlite::database db(config.value("auth.db", ""));
 	db << "insert into shares (token, event_id) values (?, ?);"
 		<< token
 		<< event_id;
@@ -183,6 +185,18 @@ std::string Server::extract_token(const httplib::Request& request)
 //	snoop::log(snoop::warn) << "Request without token" << snoop::flush;
 	return "";
 	}
+
+bool Server::is_root(const std::string& token) const
+	{
+	auto it=authorisations.find(token);
+	if(it==authorisations.end()) return false;
+	auto uit=users.find(it->second);
+	if(uit==users.end()) return false;
+	const Authorisation& auth=uit->second;
+
+	return auth.root;
+	}
+
 
 bool Server::access_allowed(int event_id, const std::string& token) const
 	{
@@ -271,9 +285,56 @@ void Server::handle_json(const httplib::Request& request, httplib::Response& res
 	
 	if(action=="account") {
 		json ret;
+		ret["title"]=config.value("title", "");
 		ret["allowed_add_user"]=false;
 		ret["allowed_share"]=false;
 		ret["allowed_download"]=false;
+		response.set_content(ret.dump(), "text/json");
+		}
+
+	// Send accounts database.
+
+	if(action=="accounts_db") {
+		if(!is_root(token)) {
+			denied(request, response);
+			return;
+			}
+		auto ret=json::array();
+		for(const auto& user: users) {
+			json acc;
+			acc["id"]  =user.second.id;
+			acc["name"]=user.second.name;
+			acc["root"]=user.second.root;
+			ret.push_back(acc);
+			}
+		response.set_content(ret.dump(), "text/json");
+		}
+	
+	// Add a new empty, non-root account to the accounts
+	// database. Return the account id.
+
+	if(action=="add_account") {
+		if(!is_root(token)) {
+			denied(request, response);
+			return;
+			}
+		int id = register_user("", "", false);
+		json ret;
+		ret["status"]="success";
+		ret["id"]=id;
+		response.set_content(ret.dump(), "text/json");
+		}
+	
+	// Update an account in the accounts database.
+
+	if(action=="update_account") {
+		if(!is_root(token)) {
+			denied(request, response);
+			return;
+			}
+//		std::cerr << request << std::endl;
+		json ret;
+		ret["status"]="failure";
 		response.set_content(ret.dump(), "text/json");
 		}
 	
@@ -369,7 +430,7 @@ void Server::denied(const httplib::Request& request, httplib::Response& response
 //	snoop::log(snoop::warn) << "Access denied for " << request->path << snoop::flush;
 //	snoop::log.sync_with_server();
 
-	send_file(request, response, htmlpath+"denied.html");
+	send_file(request, response, config.value("html_css_js_dir", "")+"denied.html");
 	}
 
 void Server::handle_default(const httplib::Request& request, httplib::Response& response)
@@ -532,7 +593,7 @@ void Server::handle_default(const httplib::Request& request, httplib::Response& 
 			}
 		}
 	else {
-		fn=htmlpath+fn;
+		fn=config.value("html_css_js_dir", "")+fn;
 		send_file(request, response, fn);
 		}
 	}
@@ -710,7 +771,7 @@ void Server::send_thumbnail(const httplib::Request& request, httplib::Response& 
 	// of the 'id' column of the photo. 
 
 	std::ostringstream ss;
-	ss << cachepath << (photo.is_video?"vthumb":"thumb")
+	ss << config.value("thumb_cache_dir", "") << (photo.is_video?"vthumb":"thumb")
 		<< std::hex << std::noshowbase << std::setw(16) << std::setfill('0')
 		<< photo.id << ".jpg";
 	std::string fn=ss.str();
@@ -754,6 +815,6 @@ void Server::send_thumbnail(const httplib::Request& request, httplib::Response& 
 
 void Server::start() 
 	{
-	listen("localhost", port);
+	listen("localhost", config.value("port", 80));
 	}
 

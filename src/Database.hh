@@ -13,7 +13,8 @@
 
 /// Class wrapping a Shotwell photo database, hiding all SQL
 /// implementation details and allowing for simple retrieval of events
-/// or single photo/video entries.
+/// or single photo/video entries. If Shotwell's database changes, this
+/// is the only place where changes are needed.
 
 class Database {
 	public:

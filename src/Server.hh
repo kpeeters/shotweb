@@ -19,8 +19,7 @@ namespace cv {
 
 class Server : public httplib::Server {
 	public:
-		Server(const std::string& db_path, const std::string& authdbpath, const std::string& htmlpath, int port,
-				 const std::string& oldroot, const std::string& newroot);
+		Server(const nlohmann::json& config);
 		virtual ~Server();
 
 		void start();
@@ -61,13 +60,16 @@ class Server : public httplib::Server {
 		void        init_authorisations();
 
 		// Register a new user.
-		void        register_user(const std::string& user, const std::string& passwd, bool admin);
+		int         register_user(const std::string& user, const std::string& passwd, bool admin);
 
 		// Register a new token for sharing an event without password.
 		Token       register_share_link(int event_id);
 			
 		// Validate a user, return an access token if valid.
 		std::string validate_user(const std::string& user, const std::string& passwd);
+
+		// Determine if the user identified by the token has root permissions.
+		bool        is_root(const std::string& token) const;
 
 		// Determine if access to the given event is allowed with the given authorisation token.
 		bool        access_allowed(int event_id, const std::string& token) const;
@@ -87,17 +89,8 @@ class Server : public httplib::Server {
 		Database db;
 //		std::vector<Database::Event> events;
 
-		// Path to the auth.db authorisation database file.
-		std::string authdbpath;
-		
-		// Path to the html, css and javascrpipt files.
-		std::string htmlpath;
-
-		// Path to the thumbnail cache.
-		std::string cachepath;
-
-		// Port on which to listen.
-		int port;
+		// Configuration details.
+		nlohmann::json config;
 
 		mutable std::mutex video_mutex;
 

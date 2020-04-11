@@ -7,8 +7,16 @@ Written by Kasper Peeters. Licensed under the GPL.
 *WARNING* not yet completely useable for others!
 
 
-Shotweb is a simple, modern and compact C++ server to share Shotwell
-[https://wiki.gnome.org/Apps/Shotwell] photo albums via the web.
+Shotweb is a simple, modern and compact C++ server for Linux to share
+Shotwell [https://wiki.gnome.org/Apps/Shotwell] photo albums via the
+web. I have a large collection of photos and videos which I do not
+want to store in a cloud service, but still want to share with friends
+and family. The master copy lives on my laptop and is
+categorised/labelled with Shotwell. I thus simply wanted to share
+individual Shotwell events with other people. Because I could not find
+anything suitable (most photo sharing server software, such as Piwigo
+or Nextcloud, is *far* to complex while still not serving my basic
+needs), I decided to write one myself.
 
 Features:
 
@@ -22,26 +30,36 @@ Features:
 * Thumbnail caching.
 * Clean compact C++ with handcoded HTML/CSS/JS.
 
-
 In the pipeline:
 
 * Photo pre-loading for quick browsing.
 * Download single photos or entire events as zip files.
 
+
 Building
 --------
 
-First install the prerequisites with::
+These are instructions for Debian/Ubuntu, adjust the build
+prerequisites appropriately for other distros. First install the
+prerequisites with::
 
     sudo apt install cmake g++ libopencv-dev libboost-all-dev \
                      libsqlite3-dev ffmpegthumbnailer 
     
-Then build as::
+You need a fairly decent C++ compiler, so on e.g. Ubuntu 18.04 you
+will need to install clang and then do e.g.::
+
+    export CXX=/usr/bin/clang++-7
+    export CC=/usr/bin/clang-7    
+    
+With gcc 7.4.0 you will get errors about `std::experimental::optional<T>`.
+
+Then build and install with::
 
     cd shotweb
     mkdir build
     cd build
-    cmake ..
+    cmake ../src
     make
     sudo make install
 
