@@ -1,0 +1,10 @@
+{
+    "photo.db":        "/home/user/.local/share/shotwell/data/photo.db",
+    "auth.db":         "/home/user/.local/share/shotwell/auth.db",
+    "html_css_js_dir": "/usr/local/share/shotweb/",
+    "thumb_cache_dir": "/home/user/.cache/shotwell/thumbs/thumbs360/",
+    "old_root":        "",
+    "new_root":        "",
+    "port":            12345,
+    "title":           "Someone's gallery"
+}
