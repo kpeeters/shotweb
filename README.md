@@ -3,9 +3,10 @@ Shotweb: web server for shotwell photo databases
 ================================================
 
 Kasper Peeters <kasper.peeters@phi-sci.com>
+
 Licensed under the GPL.
 
-*WARNING* *This is not yet feature-complete*
+**WARNING** **This is not yet feature-complete**
 
 Shotweb is a simple, modern and compact C++ server for Linux to share
 Shotwell [https://wiki.gnome.org/Apps/Shotwell] photo albums via the
@@ -171,14 +172,6 @@ See [https://slhck.info/video/2017/03/01/rate-control.html] for other
 useful info on the various ways to reduce bandwidth with ffmpeg
 options.
 
-
-TODO
-----
-
-* Script to re-encode videos for streaming.
-* Log all access into database table and allow viewing by admin.
-* Document database files used.
-* Edit users and rights.
 
 
 Used libraries 
