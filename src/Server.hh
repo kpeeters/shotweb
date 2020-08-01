@@ -48,6 +48,7 @@ class Server : public httplib::Server {
 		typedef std::string Token;
 
 		// Information mapping a user ID to Authorisation data.
+		// FIXME: just hit the database directly.
 		std::map<int,   Authorisation> users;
 
 		// Information mapping a UUID token to a user ID.

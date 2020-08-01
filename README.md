@@ -54,7 +54,7 @@ prerequisites appropriately for other distros. First install the
 prerequisites with::
 
     sudo apt install cmake g++ libopencv-dev libboost-all-dev \
-                     libsqlite3-dev ffmpegthumbnailer 
+                     libsqlite3-dev libscrypt-dev ffmpegthumbnailer 
     
 You need a fairly decent C++ compiler, so on e.g. Ubuntu 18.04 you
 will need to install clang and then do e.g.::
@@ -142,8 +142,8 @@ The meaning of the parameters is::
        nginx web server and let that one proxy the connection to
        shotweb. 
     
-You can now access the site and setup your administrator password (do
-this immediately). 
+Once the server is running, you can access the site and setup your
+administrator password (do this immediately!).
 
     
     
@@ -173,6 +173,7 @@ See [https://slhck.info/video/2017/03/01/rate-control.html] for other
 useful info on the various ways to reduce bandwidth with ffmpeg
 options.
 
+*TODO*: use HLS [https://www.exoscale.com/syslog/self-hosted-videos/]
 
 
 Used libraries 

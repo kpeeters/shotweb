@@ -2,6 +2,14 @@
 <html>
   <head>
 	 <title>ShotWeb setup</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons"
+          rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz:300" rel="stylesheet">     
+	 <meta name="mobile-web-app-capable" content="yes">
+	 <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="viewport" content="width=device-width,
+                                   user-scalable=no, initial-scale=1.0, maximum-scale=1.0"/>
+
 	 <link href="login.css" rel="stylesheet" type="text/css" />
 	 <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
 	 <script src="login.js"></script>
@@ -13,10 +21,11 @@
 	 <div class="screen" id="login_segment">
 		<form action="json" method="post" autocomplete="on">
 		  <div id="login">
-			 <h1>ShotWeb setup</h1>
+			 <h1>ShotWeb setup <i class="material-icons">settings</i></h1>
 			 <table>
             <tr><td class="dialogue_text" colspan=2>Enter a username and password for the
-            administrator account.</td></tr>
+                administrator account.</td></tr>
+            <tr><td></td></tr>
 				<tr><td>user name:</td><td><input type="text" 
 															 size="30" 
 															 id="username"

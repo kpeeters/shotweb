@@ -9,8 +9,9 @@
 #include <boost/uuid/uuid.hpp>            // uuid class
 #include <boost/uuid/uuid_generators.hpp> // generators
 #include <boost/uuid/uuid_io.hpp>         // streaming operators etc.
-
 #include <boost/filesystem.hpp>
+
+#include <libscrypt.h>
 
 #include <thread>
 
@@ -64,9 +65,9 @@ std::string Server::logstamp(const httplib::Request *request) const
 	std::time_t time_now = std::time(nullptr);
 	str << std::put_time(std::localtime(&time_now), "%y-%m-%d %OH:%OM:%OS") << ", ";
 	if(request!=0)
-		str << request->get_header_value("REMOTE_ADDR") << ", " << request->get_header_value("X-Forwarded-For") << ": ";
+		str << std::setw(16) << request->get_header_value("REMOTE_ADDR") << ", " << std::setw(16) << request->get_header_value("X-Forwarded-For") << ": ";
 	else
-		str << "0.0.0.0: ";
+		str << std::setw(16) << "0.0.0.0" << ", " << std::setw(16) << " " << ": ";
 	return str.str();
 	}
 
@@ -109,6 +110,8 @@ void Server::init_authorisations()
 		};
 	
 	std::cerr << logstamp() << "read " << users.size() << " users." << std::endl;
+	if(users.size()==0)
+		std::cerr << logstamp() << "WARNING: set the admin password NOW by connecting to the server!" << std::endl;
 
 	// Read in all info for passwordless access.
 
@@ -123,9 +126,17 @@ void Server::init_authorisations()
 
 int Server::register_user(const std::string& user, const std::string& password, bool admin) 
 	{
+	if(users.size()>0 && admin) {
+		std::cerr << logstamp() << "attempt to register admin user when one is already present" << std::endl;
+		return -1;
+		}
+	
+	char outbuf[SCRYPT_MCF_LEN];
+	libscrypt_hash(outbuf, password.c_str(), SCRYPT_N, SCRYPT_r, SCRYPT_p);
+	
 	Authorisation auth;
 	auth.name=user;
-	auth.password=password;
+	auth.password=outbuf;
 	auth.root=admin;
 
 	sqlite::database db(config.value("auth.db", ""));
@@ -137,6 +148,7 @@ int Server::register_user(const std::string& user, const std::string& password, 
 	auth.id=db.last_insert_rowid();
 	users[auth.id]=auth;
 
+	std::cerr << logstamp() << "registered user " << user << (admin?" as admin":"as normal user") << std::endl;
 	return auth.id;
 	}
 
@@ -155,17 +167,27 @@ std::string Server::validate_user(const std::string& user, const std::string& pa
 	{
 	auto it=users.begin();
 	while(it!=users.end()) {
-		if(user==it->second.name && password==it->second.password) {
-			std::string token = boost::uuids::to_string(boost::uuids::random_generator()());
-			authorisations[token]=(it->second.id);
-//			snoop::log(snoop::info) << "Authenticated user " << user << snoop::flush;
-//			snoop::log.sync_with_server();
-			return token;
+		if(user==it->second.name) {
+			char mcf[SCRYPT_MCF_LEN];
+			strncpy(mcf, it->second.password.c_str(), std::min(SCRYPT_MCF_LEN, (int)it->second.password.size())+1);
+			int retval = libscrypt_check(mcf, password.c_str());
+			if(retval>0) {
+				std::string token = boost::uuids::to_string(boost::uuids::random_generator()());
+				authorisations[token]=(it->second.id);
+				std::cerr << logstamp() << "authenticated user " << user << std::endl;
+				return token;
+				}
+			else if(retval<0) {
+				std::cerr << logstamp() << "error running libscrypt_check" << std::endl;
+				}
+			else {
+				std::cerr << logstamp() << "failed to authenticate user " << user << std::endl;
+				}
+			return "";
 			}
 		++it;
 		}
-//	snoop::log(snoop::warn) << "Failed to authenticate user " << user << snoop::flush;
-//	snoop::log.sync_with_server();
+	std::cerr << logstamp() << "no known user " << user << std::endl;
 	return "";
 	}
 
@@ -224,204 +246,247 @@ bool Server::access_allowed(int event_id, const std::string& token) const
 		
 void Server::handle_json(const httplib::Request& request, httplib::Response& response)
 	{
-	auto content = json::parse(request.body);
-	std::string action = content["action"];
-	std::string token  = extract_token(request);
+	try {
+		auto content = json::parse(request.body);
+		std::string action = content["action"];
+		std::string token  = extract_token(request);
 	
-	// Login authentication, hands out a token if authentication valid.
+		// Login authentication, hands out a token if authentication valid.
 
-	if(action=="login") {
-		std::string user = content["username"];
-		std::string password = content["password"];
+		if(action=="login") {
+			std::string user = content["username"];
+			std::string password = content["password"];
 
-		if(users.size()==0) {
-			register_user(user, password, true);
+			if(users.size()==0) {
+				register_user(user, password, true);
+				}
+		
+			std::string newtoken = validate_user(user, password);
+
+			if(newtoken=="") {
+				std::string ret = "{\"status\": \"error\"}\n";
+				int length=ret.size();
+				response.set_content(ret, "application/json");
+				}
+			else {
+				std::string ret = "{\"status\": \"ok\", \"token\": \"" + newtoken + "\"}\r\n";
+				int length=ret.size();
+				response.set_header("Set-Cookie", ("token="+newtoken).c_str());
+				response.set_content(ret, "application/json");
+				}
+			return;
+			}
+
+		// Produce a JSON structure with all events for this user.
+
+		if(action=="events") {
+			auto events = db.get_events();		
+			auto it=events.begin();
+			json ret;
+			bool first=true;
+			int added=0;
+			while(it!=events.end()) {
+				if(access_allowed(it->id, token)) {
+					++added;
+					json evt;
+					evt["id"]=it->id;
+					evt["event"]=it->name;
+					evt["start"]= it->start_timestamp;
+					evt["end"]  = it->end_timestamp;
+					ret.push_back(evt);
+					}
+				++it;
+				}
+			if(added==0)
+				response.set_content("[]\n", "application/json");
+			else
+				response.set_content(ret.dump(), "application/json");
+			return;
+			}
+
+		// Send account information.
+	
+		if(action=="account") {
+			json ret;
+			ret["title"]=config.value("title", "");
+			ret["allowed_add_user"]=false;
+			ret["allowed_share"]=false;
+			ret["allowed_download"]=false;
+			response.set_content(ret.dump(), "application/json");
+			}
+
+		// Send accounts database.
+
+		if(action=="accounts_db") {
+			if(!is_root(token)) {
+				denied(request, response);
+				return;
+				}
+			auto ret=json::array();
+			for(const auto& user: users) {
+				json acc;
+				acc["id"]  =user.second.id;
+				acc["name"]=user.second.name;
+				acc["root"]=user.second.root;
+				ret.push_back(acc);
+				}
+			response.set_content(ret.dump(), "application/json");
+			}
+	
+		// Add a new empty, non-root account to the accounts
+		// database. Return the account id.
+
+		if(action=="add_account") {
+			if(!is_root(token)) {
+				denied(request, response);
+				return;
+				}
+			int id = register_user("", "", false);
+			json ret;
+			ret["status"]="success";
+			ret["id"]=id;
+			response.set_content(ret.dump(), "application/json");
+			}
+	
+		// Update an account in the accounts database.
+
+		if(action=="update_account") {
+			if(!is_root(token)) {
+				std::cerr << logstamp(&request) << "not admin user, cannot change account" << std::endl;
+				denied(request, response);
+				return;
+				}
+			int id=content.value("id", -1);
+			if(id!=-1) {
+				char outbuf[SCRYPT_MCF_LEN];
+				libscrypt_hash(outbuf, content.value("password", "").c_str(), SCRYPT_N, SCRYPT_r, SCRYPT_p);
+			
+				sqlite::database db(config.value("auth.db", ""));
+				db << "update users set name=?, password=? where id=?;"
+					<< content.value("name", "")
+					<< outbuf
+					<< id;
+			
+				users[id].name=content.value("name", "");
+				users[id].password=outbuf;
+
+				std::cerr << logstamp(&request) << "user " << content.value("name", "") << " updated" << std::endl;
+				
+				json ret;
+				ret["status"]="success";
+				response.set_content(ret.dump(), "application/json");
+				}
+			else {
+				json ret;
+				ret["status"]="failure";
+				response.set_content(ret.dump(), "application/json");
+				}
+			return;
 			}
 		
-		std::string newtoken = validate_user(user, password);
+		// Produce a sharing token URL.
 
-		if(newtoken=="") {
-			std::string ret = "{\"status\": \"error\"}\n";
-			int length=ret.size();
-			response.set_content(ret, "text/json");
-			}
-		else {
-			std::string ret = "{\"status\": \"ok\", \"token\": \"" + newtoken + "\"}\r\n";
-			int length=ret.size();
-			response.set_header("Set-Cookie", ("token="+newtoken).c_str());
-			response.set_content(ret, "text/json");
-			}
-		return;
-		}
-
-	// Produce a JSON structure with all events for this user.
-
-	if(action=="events") {
-		auto events = db.get_events();		
-		auto it=events.begin();
-		json ret;
-		bool first=true;
-		int added=0;
-		while(it!=events.end()) {
-			if(access_allowed(it->id, token)) {
-				++added;
-				json evt;
-				evt["id"]=it->id;
-				evt["event"]=it->name;
-				evt["start"]= it->start_timestamp;
-				evt["end"]  = it->end_timestamp;
-				ret.push_back(evt);
-				}
-			++it;
-			}
-		if(added==0)
-			response.set_content("[]\n", "text/json");
-		else
-			response.set_content(ret.dump(), "text/json");
-		return;
-		}
-
-	// Send account information.
-	
-	if(action=="account") {
-		json ret;
-		ret["title"]=config.value("title", "");
-		ret["allowed_add_user"]=false;
-		ret["allowed_share"]=false;
-		ret["allowed_download"]=false;
-		response.set_content(ret.dump(), "text/json");
-		}
-
-	// Send accounts database.
-
-	if(action=="accounts_db") {
-		if(!is_root(token)) {
-			denied(request, response);
-			return;
-			}
-		auto ret=json::array();
-		for(const auto& user: users) {
-			json acc;
-			acc["id"]  =user.second.id;
-			acc["name"]=user.second.name;
-			acc["root"]=user.second.root;
-			ret.push_back(acc);
-			}
-		response.set_content(ret.dump(), "text/json");
-		}
-	
-	// Add a new empty, non-root account to the accounts
-	// database. Return the account id.
-
-	if(action=="add_account") {
-		if(!is_root(token)) {
-			denied(request, response);
-			return;
-			}
-		int id = register_user("", "", false);
-		json ret;
-		ret["status"]="success";
-		ret["id"]=id;
-		response.set_content(ret.dump(), "text/json");
-		}
-	
-	// Update an account in the accounts database.
-
-	if(action=="update_account") {
-		if(!is_root(token)) {
-			denied(request, response);
-			return;
-			}
-//		std::cerr << request << std::endl;
-		json ret;
-		ret["status"]="failure";
-		response.set_content(ret.dump(), "text/json");
-		}
-	
-	// Produce a sharing token URL.
-
-	if(action=="share") {
-		int event_id=content["event_id"];
-		Token token=register_share_link(event_id);
-		std::cerr << logstamp(&request) << "sharing event " << event_id << " with token " << token << std::endl;
-		json ret;
+		if(action=="share") {
+			int event_id=content["event_id"];
+			Token token=register_share_link(event_id);
+			std::cerr << logstamp(&request) << "sharing event " << event_id << " with token " << token << std::endl;
+			json ret;
 //		for(const auto& m: request.headers) {
 //			std::cerr << m.first << " = " << m.second << std::endl;
 //			}
-		auto refit=request.headers.find("Referer");
-		std::string ref;
-		if(refit!=request.headers.end())
-			ref=refit->second;
-		replace(ref, "events.html", "event.html");
-		ret["url"]=ref+"?id="+token;
-		response.set_content(ret.dump(), "text/json");
-		return;
-		}
+			auto refit=request.headers.find("Referer");
+			std::string ref;
+			if(refit!=request.headers.end())
+				ref=refit->second;
+			replace(ref, "events.html", "event.html");
+			ret["url"]=ref+"?id="+token;
+			response.set_content(ret.dump(), "application/json");
+			return;
+			}
 	
-	// Produce a JSON structure with all photos for this user.
+		// Produce a JSON structure with all photos for this user.
 
-	if(action=="photos") {
-		std::string event_id_string = content["id"];
-		bool allowed=false;
-		int event_id=-1;
-		if(event_id_string.size()==36) {// this is a UUID, not a numerical id
-			auto it=share_links.find(event_id_string);
-			if(it!=share_links.end()) {
-				allowed=true;
-				event_id=it->second;
-				std::cerr << logstamp(&request) << "shared token access to event " << event_id << std::endl;
-				// Set this token as access cookie so we can get through photos etc.
-				response.set_header("Set-Cookie", ("token="+event_id_string).c_str());
+		if(action=="photos") {
+			std::string event_id_string = content["id"];
+			bool allowed=false;
+			int event_id=-1;
+			if(event_id_string.size()==36) {// this is a UUID, not a numerical id
+				auto it=share_links.find(event_id_string);
+				if(it!=share_links.end()) {
+					allowed=true;
+					event_id=it->second;
+					std::cerr << logstamp(&request) << "shared token access to event " << event_id << std::endl;
+					// Set this token as access cookie so we can get through photos etc.
+					response.set_header("Set-Cookie", ("token="+event_id_string).c_str());
+					}
+				else std::cerr << logstamp(&request) << "shared token " << event_id_string << " invalid" << std::endl;
 				}
-			else std::cerr << logstamp(&request) << "shared token " << event_id_string << " invalid" << std::endl;
-			}
-		else {
-			event_id=atoi(event_id_string.c_str());
-			allowed=access_allowed(event_id, token);
-			}
+			else {
+				event_id=atoi(event_id_string.c_str());
+				allowed=access_allowed(event_id, token);
+				}
 
-		if(allowed) {
-			Database::Event ev=db.get_event(event_id);
+			if(allowed) {
+				Database::Event ev=db.get_event(event_id);
 //			snoop::log(snoop::info) << "User " << authorisations[token].name 
 //											<< " viewing event " << ev.name << snoop::flush;
 //			snoop::log.sync_with_server();
 
-			// FIXME: this is a waste, we should cache the photos information and then
-			// use it in the next call to serve from this vector, rather than re-run the query.
-			// How does this work with multi-threads, by the way?
-			auto photos = db.get_photos(event_id);
-			auto events = db.get_events();
+				// FIXME: this is a waste, we should cache the photos information and then
+				// use it in the next call to serve from this vector, rather than re-run the query.
+				// How does this work with multi-threads, by the way?
+				auto photos = db.get_photos(event_id);
+				auto events = db.get_events();
 			
-			std::ostringstream ss;
-			auto eit=events.begin();
-			while(eit!=events.end())
-				if(eit->id==event_id)
-					break;
-				else 
-					++eit;
+				std::ostringstream ss;
+				auto eit=events.begin();
+				while(eit!=events.end())
+					if(eit->id==event_id)
+						break;
+					else 
+						++eit;
 
-			json ret;
-			auto it=photos.begin();
-			ret["name"]=eit->name;
-			json jphotos;
-			while(it!=photos.end()) {
-				json photo;
-				photo["id"]=it->id;
-				photo["filename"]=it->filename;
-				photo["is_video"]=it->is_video;
-				jphotos.push_back(photo);
-				++it;
+				json ret;
+				auto it=photos.begin();
+				ret["name"]=eit->name;
+				json jphotos;
+				while(it!=photos.end()) {
+					json photo;
+					photo["id"]=it->id;
+					photo["filename"]=it->filename;
+					photo["is_video"]=it->is_video;
+					jphotos.push_back(photo);
+					++it;
+					}
+				ret["photos"]=jphotos;
+				response.set_content(ret.dump(), "application/json");
 				}
-			ret["photos"]=jphotos;
-			response.set_content(ret.dump(), "text/json");
+			else {
+				std::ostringstream ss;
+				ss << "{ \"name\": \"\", \"photos\": [] }";
+				std::string ret=ss.str();
+				response.set_content(ret, "application/json");
+				}
+			return;
 			}
-		else {
-			std::ostringstream ss;
-			ss << "{ \"name\": \"\", \"photos\": [] }";
-			std::string ret=ss.str();
-			response.set_content(ret, "text/json");
-			}
-		return;
+		}
+	catch(nlohmann::json::exception& jex) {
+		std::cerr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
+		json ret;
+		ret["status"]="failure";
+		response.set_content(ret.dump(), "application/json");
+		}
+	catch(nlohmann::detail::type_error& jex) {
+		std::cerr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
+		json ret;
+		ret["status"]="failure";
+		response.set_content(ret.dump(), "application/json");
+		}
+	catch(sqlite::errors::error& ex) {
+		std::cerr << logstamp(&request) << "server SQL exception, aborting request: " << ex.what() << std::endl;
+		json ret;
+		ret["status"]="failure";
+		response.set_content(ret.dump(), "application/json");
 		}
 	}
 
@@ -435,166 +500,183 @@ void Server::denied(const httplib::Request& request, httplib::Response& response
 
 void Server::handle_default(const httplib::Request& request, httplib::Response& response)
 	{
-	std::string fn;
-	fn = request.path;
-	while(!fn.empty() && fn[0] == '/') 
-	  fn = fn.substr(1);
+	try {
+		std::string fn;
+		fn = request.path;
+		while(!fn.empty() && fn[0] == '/') 
+			fn = fn.substr(1);
 
-	std::string token  = extract_token(request);
+		std::cerr << logstamp(&request) << "sanitised path |" << fn << "|" << std::endl;
+		std::string token  = extract_token(request);
 
-	if(fn=="" || fn=="/") {
-		if(users.size()>0) response.set_redirect("login.html");
-		else               response.set_redirect("setup.html");
-		return;
-		}
+		if(fn=="" || fn=="/") {
+			if(users.size()>0) response.set_redirect("login.html");
+			else               response.set_redirect("setup.html");
+			return;
+			}
+		if(fn=="setup.html" && users.size()>0) {
+			response.set_redirect("login.html");
+			return;
+			}
+		if(fn=="login.html" && users.size()==0) {
+			response.set_redirect("setup.html");
+			return;
+			}
 
 //	snoop::log(snoop::info) << "Request for " << fn << snoop::flush;
 
-	if(! (fn=="login.html" || fn=="login.js" || fn=="login.css"
-			|| fn=="setup.html"
-			|| fn=="favicon-192.png"
-			|| fn=="events.html" || fn=="events.js" 
-			|| fn=="event.html"  || fn=="event.js"
-			|| fn=="photo"
-			|| fn=="video"
-			|| fn=="jquery.lazyload.js"
-			|| fn=="lazyload.min.js"			
-			|| fn=="fullscreen.png"
-			|| fn=="strip_upper.png"
-			|| fn=="strip_lower.png"			
-			|| fn=="fancybox/jquery.fancybox.css"
-			|| fn=="fancybox/jquery.fancybox.pack.js"
-			|| fn=="fancybox/fancybox_overlay.png"
-			|| fn=="fancybox/fancybox_sprite.png"
-			|| fn=="fancybox/fancybox_loading.gif"
-			|| fn=="fancybox/helpers/jquery.fancybox-buttons.css"
-			|| fn=="fancybox/helpers/jquery.fancybox-buttons.js"
-			|| fn=="fancybox/helpers/jquery.fancybox-media.js"
-			|| fn.substr(0,15)=="event_thumbnail"
-			|| fn.substr(0,15)=="video_thumbnail"			
-			|| fn.substr(0,15)=="photo_thumbnail" )) {
-		std::string ret = "Error";
-		response.set_content(ret, "text/plain");
+		if(! (fn=="login.html" || fn=="login.js" || fn=="login.css"
+				|| fn=="setup.html"
+				|| fn=="favicon-192.png"
+				|| fn=="events.html" || fn=="events.js" 
+				|| fn=="event.html"  || fn=="event.js"
+				|| fn=="photo"
+				|| fn=="video"
+				|| fn=="jquery.lazyload.js"
+				|| fn=="lazyload.min.js"			
+				|| fn=="fullscreen.png"
+				|| fn=="strip_upper.png"
+				|| fn=="strip_lower.png"			
+				|| fn=="fancybox/jquery.fancybox.css"
+				|| fn=="fancybox/jquery.fancybox.pack.js"
+				|| fn=="fancybox/fancybox_overlay.png"
+				|| fn=="fancybox/fancybox_sprite.png"
+				|| fn=="fancybox/fancybox_loading.gif"
+				|| fn=="fancybox/helpers/jquery.fancybox-buttons.css"
+				|| fn=="fancybox/helpers/jquery.fancybox-buttons.js"
+				|| fn=="fancybox/helpers/jquery.fancybox-media.js"
+				|| fn.substr(0,15)=="event_thumbnail"
+				|| fn.substr(0,15)=="video_thumbnail"			
+				|| fn.substr(0,15)=="photo_thumbnail" )) {
+			std::string ret = "Error";
+			response.set_content(ret, "text/plain");
 
 //		snoop::log(snoop::warn) << "Refused to serve " << fn << snoop::flush;
 //		snoop::log.sync_with_server();
 
-		return;
-		}
-	if(fn.substr(0,15)=="event_thumbnail") {
-		auto events = db.get_events();
-		int event_num=atoi(fn.substr(16).c_str());
-		// std::cout << "need event thumbnail " << fn.substr(16) << std::endl;
-		if(access_allowed(event_num, token)) {
+			return;
+			}
+		if(fn.substr(0,15)=="event_thumbnail") {
+			auto events = db.get_events();
+			int event_num=atoi(fn.substr(16).c_str());
+			// std::cout << "need event thumbnail " << fn.substr(16) << std::endl;
+			if(access_allowed(event_num, token)) {
+				try {
+					Database::Event event;
+					for(unsigned i=0; i<events.size(); ++i)
+						if(events[i].id==event_num)
+							event=events[i];
+					Database::Photo cover_photo=db.get_photo(event.cover_photo_id);
+					send_thumbnail(request, response, cover_photo, 300);
+					}
+				catch(std::range_error& ex) {
+					std::cerr << logstamp(&request) << "error fetching event: " << ex.what() << std::endl;
+					return;
+					}
+				catch(std::logic_error& ex) {
+					std::cerr << logstamp(&request) << "file reading error: " << ex.what() << std::endl;
+					return;
+					}
+				}
+			else {
+				denied(request, response);
+				}
+			return;
+			}
+		else if(fn.substr(0,15)=="photo_thumbnail") {
+			int photo_num=atoi(fn.substr(16).c_str());
 			try {
-				Database::Event event;
-				for(unsigned i=0; i<events.size(); ++i)
-					if(events[i].id==event_num)
-						event=events[i];
-				Database::Photo cover_photo=db.get_photo(event.cover_photo_id);
-				send_thumbnail(request, response, cover_photo, 300);
+				Database::Photo photo;
+				photo=db.get_photo(photo_num);
+				if(access_allowed(photo.event_id, token)) {
+					send_thumbnail(request, response, photo, 300);
+					}
+				else {
+					denied(request, response);
+					}
 				}
-			catch(std::range_error& ex) {
-				std::cerr << logstamp(&request) << "error fetching event: " << ex.what() << std::endl;
+			catch(std::exception& ex) {
+				std::cerr << logstamp(&request) << "failure loading/sending thumb: " << ex.what() << std::endl;
 				return;
 				}
-			catch(std::logic_error& ex) {
-				std::cerr << logstamp(&request) << "file reading error: " << ex.what() << std::endl;
+			return;
+			}
+		else if(fn.substr(0,15)=="video_thumbnail") {
+			int video_num=atoi(fn.substr(16).c_str());
+			try {
+				Database::Photo photo;
+				photo=db.get_video(video_num);
+				if(access_allowed(photo.event_id, token)) {
+					send_thumbnail(request, response, photo, 300);
+					}
+				else {
+					denied(request, response);
+					}
+				}
+			catch(std::exception& ex) {
+				std::cerr << logstamp(&request) << "failure loading/sending thumb: " << ex.what() << std::endl;
 				return;
+				}
+			return;
+			}
+		else if(fn.substr(0,5)=="photo") {
+			auto id_it=request.params.find("id");
+			if(id_it==request.params.end())
+				throw std::logic_error("photo endpoint needs id");
+		
+			int photo_num=atoi(id_it->second.c_str());
+			std::cerr << logstamp(&request) << "serving photo " << photo_num << std::endl;
+			try {
+				Database::Photo photo;
+				photo=db.get_photo(photo_num);
+				if(access_allowed(photo.event_id, token)) {
+//				snoop::log(snoop::info) << "User " << authorisations[token].name << " viewing photo " << photo.filename << snoop::flush;
+//				snoop::log.sync_with_server();
+					send_photo(request, response, photo);
+					}
+				else
+					denied(request, response);
+				}
+			catch(std::exception& ex) {
+				std::cerr << logstamp(&request) << "Failure loading/sending photo: " << ex.what() << std::endl;			
+//			snoop::log(snoop::warn) << "Problem opening file " << photo_num << snoop::flush;
+//			snoop::log.sync_with_server();
+				}
+			}
+		else if(fn.substr(0,5)=="video") {
+			auto id_it=request.params.find("id");
+			if(id_it==request.params.end())
+				throw std::logic_error("video endpoint needs id");
+		
+			int photo_num=atoi(id_it->second.c_str());
+			std::cerr << logstamp(&request) << "serving video " << photo_num << std::endl;
+			try {
+				Database::Photo photo;
+				photo=db.get_video(photo_num);
+				if(true || access_allowed(photo.event_id, token)) {
+//				snoop::log(snoop::info) << "User " << authorisations[token].name << " viewing photo " << photo.filename << snoop::flush;
+//				snoop::log.sync_with_server();
+					send_video(request, response, photo);
+					}
+				else
+					denied(request, response);
+				}
+			catch(std::exception& ex) {
+				std::cerr << logstamp(&request) << "Failure loading/sending video: " << ex.what() << std::endl;			
+//			snoop::log(snoop::warn) << "Problem opening file " << photo_num << snoop::flush;
+//			snoop::log.sync_with_server();
 				}
 			}
 		else {
-			denied(request, response);
-			}
-		return;
-		}
-	else if(fn.substr(0,15)=="photo_thumbnail") {
-		int photo_num=atoi(fn.substr(16).c_str());
-		try {
-			Database::Photo photo;
-			photo=db.get_photo(photo_num);
-			if(access_allowed(photo.event_id, token)) {
-				send_thumbnail(request, response, photo, 300);
-				}
-			else {
-				denied(request, response);
-				}
-			}
-		catch(std::exception& ex) {
-			std::cerr << logstamp(&request) << "failure loading/sending thumb: " << ex.what() << std::endl;
-			return;
-			}
-		return;
-		}
-	else if(fn.substr(0,15)=="video_thumbnail") {
-		int video_num=atoi(fn.substr(16).c_str());
-		try {
-			Database::Photo photo;
-			photo=db.get_video(video_num);
-			if(access_allowed(photo.event_id, token)) {
-				send_thumbnail(request, response, photo, 300);
-				}
-			else {
-				denied(request, response);
-				}
-			}
-		catch(std::exception& ex) {
-			std::cerr << logstamp(&request) << "failure loading/sending thumb: " << ex.what() << std::endl;
-			return;
-			}
-		return;
-		}
-	else if(fn.substr(0,5)=="photo") {
-		auto id_it=request.params.find("id");
-		if(id_it==request.params.end())
-			throw std::logic_error("photo endpoint needs id");
-		
-		int photo_num=atoi(id_it->second.c_str());
-		std::cerr << logstamp(&request) << "serving photo " << photo_num << std::endl;
-		try {
-			Database::Photo photo;
-			photo=db.get_photo(photo_num);
-			if(access_allowed(photo.event_id, token)) {
-//				snoop::log(snoop::info) << "User " << authorisations[token].name << " viewing photo " << photo.filename << snoop::flush;
-//				snoop::log.sync_with_server();
-				send_photo(request, response, photo);
-				}
-			else
-				denied(request, response);
-			}
-		catch(std::exception& ex) {
-			std::cerr << logstamp(&request) << "Failure loading/sending photo: " << ex.what() << std::endl;			
-//			snoop::log(snoop::warn) << "Problem opening file " << photo_num << snoop::flush;
-//			snoop::log.sync_with_server();
+			fn=config.value("html_css_js_dir", "")+fn;
+			send_file(request, response, fn);
 			}
 		}
-	else if(fn.substr(0,5)=="video") {
-		auto id_it=request.params.find("id");
-		if(id_it==request.params.end())
-			throw std::logic_error("video endpoint needs id");
-		
-		int photo_num=atoi(id_it->second.c_str());
-		std::cerr << logstamp(&request) << "serving video " << photo_num << std::endl;
-		try {
-			Database::Photo photo;
-			photo=db.get_video(photo_num);
-			if(true || access_allowed(photo.event_id, token)) {
-//				snoop::log(snoop::info) << "User " << authorisations[token].name << " viewing photo " << photo.filename << snoop::flush;
-//				snoop::log.sync_with_server();
-				send_video(request, response, photo);
-				}
-			else
-				denied(request, response);
-			}
-		catch(std::exception& ex) {
-			std::cerr << logstamp(&request) << "Failure loading/sending video: " << ex.what() << std::endl;			
-//			snoop::log(snoop::warn) << "Problem opening file " << photo_num << snoop::flush;
-//			snoop::log.sync_with_server();
-			}
+	catch(nlohmann::json::exception& jex) {
+		std::cerr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		}
-	else {
-		fn=config.value("html_css_js_dir", "")+fn;
-		send_file(request, response, fn);
+	catch(nlohmann::detail::type_error& jex) {
+		std::cerr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		}
 	}
 
@@ -632,7 +714,7 @@ void Server::send_file(const httplib::Request& request, httplib::Response& respo
 //		snoop::log.sync_with_server();
 
 		std::string ret = "{\"status\": \"notfound\"}\n";
-		response.set_content(ret, "text/json");
+		response.set_content(ret, "application/json");
 		return;
 		}
 	}
@@ -815,6 +897,8 @@ void Server::send_thumbnail(const httplib::Request& request, httplib::Response& 
 
 void Server::start() 
 	{
-	listen("localhost", config.value("port", 80));
+	int port=config.value("port", 80);
+	std::cerr << logstamp() << "starting server on port " << port << std::endl;
+	listen("localhost", port);
 	}
 

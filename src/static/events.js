@@ -176,10 +176,11 @@ var load_accounts_db = function() {
             $("#accounts_table").empty();
             for(var account of data) {
                 $("#accounts_table").append("<tr id='account_"+account.id+"'><td>"+account.id+"</td>"
-                                            + "<td><input type='text' class='name' name='"+account.id+"'></td></tr>");
+                                            + "<td><input type='text' class='name' name='"+account.id+"'></td>"
+                                            + "<td><input type='text' class='password' name=''></td></tr>");
                 $("#account_"+account.id+" .name").val(account.name).on('change', function(event) {
                     console.log(event.currentTarget);
-                    update_account(event.currentTarget.name, event.currentTarget.value, "");
+                    update_account(parseInt(event.currentTarget.name), event.currentTarget.value, "");
                 });
             }
 		  },

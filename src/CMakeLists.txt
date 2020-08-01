@@ -7,7 +7,10 @@ if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
 endif()
 
 find_package(OpenCV REQUIRED)
-find_library(sqlite3 sqlite3 required)
+find_library(SCRYPT  scrypt required)
+find_library(SQLITE3 sqlite3 required)
+message("-- Found sqlite3 at ${SQLITE3}")
+message("-- Found scrypt  at ${SCRYPT}")
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
@@ -23,7 +26,7 @@ endif()
 add_executable(test_database test_database.cc Database.cc Utility.cc)
 add_executable(shotweb Database.cc Server.cc Utility.cc shotweb.cc )
 target_link_libraries(test_database sqlite3)
-target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 ${OpenCV_LIBS} pthread)
+target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 scrypt ${OpenCV_LIBS} pthread)
 
 set(HTML_CSS_JS
   static/login.html
