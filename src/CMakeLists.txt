@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(phosha)
+project(shotweb)
 
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
-   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g -std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -g")
 endif()
+SET(CMAKE_CXX_STANDARD 14)
+
 
 find_package(OpenCV REQUIRED)
 find_library(SCRYPT  scrypt required)
@@ -15,16 +17,16 @@ set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 find_package(Boost 1.45.0 COMPONENTS system filesystem REQUIRED)
-include_directories(${CMAKE_SOURCE_DIR}/../external/sqlite_modern_cpp/hdr)
+include_directories(${CMAKE_SOURCE_DIR}/external/sqlite_modern_cpp/hdr)
 
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
-    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.9)
-        message(FATAL_ERROR "GCC version >=4.9 required for bugfree C++11 regex support.")
+    if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 8.0)
+        message(FATAL_ERROR "GCC version >=8.0 required for std::optional support. Use clang >=7.0 otherwise.")
     endif()
 endif()
 
 add_executable(test_database test_database.cc Database.cc Utility.cc)
-add_executable(shotweb Database.cc Server.cc Utility.cc shotweb.cc )
+add_executable(shotweb Database.cc Server.cc Utility.cc ThreadStream.cc shotweb.cc )
 target_link_libraries(test_database sqlite3)
 target_link_libraries(shotweb ${Boost_LIBRARIES} sqlite3 scrypt ${OpenCV_LIBS} pthread)
 

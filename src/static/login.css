@@ -24,6 +24,9 @@ h1 {
 table {
 	 margin-top: 40px;
 }
+th {
+    font-size: 16px;
+}
 .material-icons {
     color: rgb(160,20,20);
 }

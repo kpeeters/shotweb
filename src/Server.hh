@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "ThreadStream.hh"
+
 // https://github.com/yhirose/cpp-httplib
 #include "httplib.h"
 
@@ -67,7 +69,7 @@ class Server : public httplib::Server {
 		Token       register_share_link(int event_id);
 			
 		// Validate a user, return an access token if valid.
-		std::string validate_user(const std::string& user, const std::string& passwd);
+		std::string validate_user(const httplib::Request& request, const std::string& user, const std::string& passwd);
 
 		// Determine if the user identified by the token has root permissions.
 		bool        is_root(const std::string& token) const;
@@ -94,6 +96,7 @@ class Server : public httplib::Server {
 		nlohmann::json config;
 
 		mutable std::mutex video_mutex;
+		mutable std::mutex auth_mutex;
 
 		class StreamHandler {
 			public:
@@ -109,6 +112,4 @@ class Server : public httplib::Server {
 		};
 		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
 
-	private:
-		std::string logstamp(const httplib::Request *request=0) const;
 };

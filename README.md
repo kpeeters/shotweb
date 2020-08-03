@@ -62,14 +62,15 @@ will need to install clang and then do e.g.::
     export CXX=/usr/bin/clang++-7
     export CC=/usr/bin/clang-7    
     
-With gcc 7.4.0 you will get errors about `std::experimental::optional<T>`.
+With gcc 7.4.0 (and possibly others) you will get errors about
+`std::experimental::optional<T>`.
 
 Then build and install with::
 
     cd shotweb
     mkdir build
     cd build
-    cmake ../src
+    cmake ..
     make
     sudo make install
 

@@ -1,17 +1,9 @@
 
 //#include <snoop/Snoop.hh>
 #include "Server.hh"
+#include "Utility.hh"
 #include <iostream>
 #include <iomanip>
-
-std::string logstamp()
-	{
-	std::ostringstream str;
-	std::time_t time_now = std::time(nullptr);
-	str << std::put_time(std::localtime(&time_now), "%y-%m-%d %OH:%OM:%OS") << ", ";
-	str << "0.0.0.0: ";
-	return str.str();
-	}
 
 int main(int argc, char **argv)
 	{

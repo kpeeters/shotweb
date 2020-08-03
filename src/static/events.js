@@ -174,13 +174,26 @@ var load_accounts_db = function() {
 		  {
             // console.log(data);
             $("#accounts_table").empty();
+            $("#accounts_table").append("<tr><th>id</th><th>user name</th><th>password</th></tr>");
+            console.log(data);
             for(var account of data) {
+                console.log(account.name);
                 $("#accounts_table").append("<tr id='account_"+account.id+"'><td>"+account.id+"</td>"
-                                            + "<td><input type='text' class='name' name='"+account.id+"'></td>"
-                                            + "<td><input type='text' class='password' name=''></td></tr>");
-                $("#account_"+account.id+" .name").val(account.name).on('change', function(event) {
+                                            + "<td><input type='text'     class='name'     name='"+account.id+"'></td>"
+                                            + "<td><input type='password' class='password' name='"+account.id+"'></td></tr>");
+                $("#account_"+account.id+" .name").val(account.name);
+                $("#account_"+account.id+" .password").val("");
+                $("#account_"+account.id+" .name").on('change', function(event) {
                     console.log(event.currentTarget);
-                    update_account(parseInt(event.currentTarget.name), event.currentTarget.value, "");
+                    update_account(parseInt(event.currentTarget.name),
+                                   $("#account_"+account.id+" .name").val(),
+                                   "");
+                });
+                $("#account_"+account.id+" .password").on('change', function(event) {
+                    console.log(event.currentTarget);
+                    update_account(parseInt(event.currentTarget.name),
+                                   "",
+                                   $("#account_"+account.id+" .password").val());
                 });
             }
 		  },
