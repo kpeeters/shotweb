@@ -17,6 +17,16 @@
 
 using json = nlohmann::json;
 
+std::string trim(const std::string& s)
+	{
+	if(s.length() == 0)
+		return s;
+	int b = s.find_first_not_of(" \t\n");
+	int e = s.find_last_not_of(" \t\n");
+	if(b == -1) // No non-spaces
+		return "";
+	return std::string(s, b, e - b + 1);
+	}
 
 
 Server::StreamHandler::StreamHandler(std::string fn)
