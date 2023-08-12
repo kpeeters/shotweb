@@ -65,6 +65,11 @@ will need to install clang and then do e.g.::
 With gcc 7.4.0 (and possibly others) you will get errors about
 `std::experimental::optional<T>`.
 
+Make sure you checkout the git submodules:
+
+    cd shotweb
+    git submodule update --init --recursive
+
 Then build and install with::
 
     cd shotweb
@@ -175,7 +180,7 @@ useful info on the various ways to reduce bandwidth with ffmpeg
 options.
 
 *TODO*: use HLS [https://www.exoscale.com/syslog/self-hosted-videos/]
-
+*TODO*: only serve video if auth token is present
 
 Used libraries 
 --------------

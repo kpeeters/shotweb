@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 #include <sqlite_modern_cpp.h>
+#include <mutex>
 
 /// Class wrapping a Shotwell photo database, hiding all SQL
 /// implementation details and allowing for simple retrieval of events
@@ -58,6 +59,8 @@ class Database {
 		Photo              get_video(int video_id);
 
 	private:
+		mutable std::mutex db_mutex;
+		
 		sqlite::sqlite_config             config;
 		std::unique_ptr<sqlite::database> db;
 

@@ -65,7 +65,7 @@ Server::Server(const nlohmann::json& config)
 		  );
 	Get("/.*", 
 		 [&](const httplib::Request& request, httplib::Response& response) {
-			 terr << logstamp(&request) << "serving " << request.path << std::endl;
+			 terr << logstamp(&request) << "request " << request.path << std::endl;
 			 handle_default(request, response);
 			 }
 		 );
@@ -77,6 +77,8 @@ Server::~Server()
 
 void Server::init_authorisations()
 	{
+	std::lock_guard<std::mutex> lock(auth_mutex);
+	
 	terr << logstamp(0) << "auth.db path: " << config.value("auth.db", "") << std::endl;
 	
 	sqlite::database db(config.value("auth.db", ""));
@@ -236,20 +238,33 @@ bool Server::access_allowed(int event_id, const std::string& token) const
 	if(it==authorisations.end()) { // ticket not found to match to a user
 		auto sit=share_links.find(token);
 		if(sit==share_links.end()) { // ticket not found for sharing
+			// terr << "no user ticket and no share ticket" << std::endl;
 			return false;
 			}
-		else return sit->second==event_id;
+		else {
+			// terr << "share ticket found" << std::endl;
+			return sit->second==event_id;
+			}
 		}
 
 	auto uit=users.find(it->second);
-	if(uit==users.end())
+	if(uit==users.end()) {
+		// terr << "ticket found but no user" << std::endl;		
 		return false;             // ticket found but no corresponding user
+		}
 
 	const Authorisation& auth=uit->second;
 	
-	if(auth.root) return true;   // root has access to everything
+	if(auth.root) {
+		// terr << "root access" << std::endl;
+		return true;   // root has access to everything
+		}
 
-	if(std::find(auth.events.begin(), auth.events.end(), event_id)!=auth.events.end()) return true;
+	if(std::find(auth.events.begin(), auth.events.end(), event_id)!=auth.events.end()) {
+		// terr << "user ticket found with access to event" << std::endl;
+		return true;
+		}
+	// terr << "user ticket found but no access to event" << std::endl;
 
 	return false;
 	}
@@ -275,12 +290,12 @@ void Server::handle_json(const httplib::Request& request, httplib::Response& res
 
 			if(newtoken=="") {
 				std::string ret = "{\"status\": \"error\"}\n";
-				int length=ret.size();
+				// int length=ret.size();
 				response.set_content(ret, "application/json");
 				}
 			else {
 				std::string ret = "{\"status\": \"ok\", \"token\": \"" + newtoken + "\"}\r\n";
-				int length=ret.size();
+				// int length=ret.size();
 				response.set_header("Set-Cookie", ("token="+newtoken).c_str());
 				response.set_content(ret, "application/json");
 				}
@@ -293,7 +308,7 @@ void Server::handle_json(const httplib::Request& request, httplib::Response& res
 			auto events = db.get_events();		
 			auto it=events.begin();
 			json ret;
-			bool first=true;
+			// bool first=true;
 			int added=0;
 			while(it!=events.end()) {
 				if(access_allowed(it->id, token)) {
@@ -493,13 +508,13 @@ void Server::handle_json(const httplib::Request& request, httplib::Response& res
 			return;
 			}
 		}
-	catch(nlohmann::json::exception& jex) {
+	catch(nlohmann::detail::type_error& jex) {
 		terr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		json ret;
 		ret["status"]="failure";
 		response.set_content(ret.dump(), "application/json");
 		}
-	catch(nlohmann::detail::type_error& jex) {
+	catch(nlohmann::json::exception& jex) {
 		terr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		json ret;
 		ret["status"]="failure";
@@ -562,7 +577,7 @@ void Server::handle_default(const httplib::Request& request, httplib::Response& 
 				|| fn=="events.html" || fn=="events.js" 
 				|| fn=="event.html"  || fn=="event.js"
 				|| fn=="photo"
-				|| fn=="video"
+				|| fn.substr(0,5)=="video"
 				|| fn=="jquery.lazyload.js"
 				|| fn=="lazyload.min.js"			
 				|| fn=="fullscreen.png"
@@ -680,19 +695,24 @@ void Server::handle_default(const httplib::Request& request, httplib::Response& 
 				}
 			}
 		else if(fn.substr(0,5)=="video") {
-			auto id_it=request.params.find("id");
-			if(id_it==request.params.end())
+//			auto id_it=request.params.find("id");
+//			if(id_it==request.params.end())
+			if(fn.size()<7)
 				throw std::logic_error("video endpoint needs id");
-		
-			int photo_num=atoi(id_it->second.c_str());
-			terr << logstamp(&request) << "serving video " << photo_num << std::endl;
+			size_t slash=fn.substr(6).find("/");
+			if(slash==std::string::npos)
+				throw std::logic_error("video endpoint needs type");
+			
+			int photo_num=atoi(fn.substr(6, slash).c_str());
+			std::string vtype=fn.substr(6+slash+1);
+			terr << logstamp(&request) << "video request " << vtype << " for " << photo_num << std::endl;
 			try {
 				Database::Photo photo;
 				photo=db.get_video(photo_num);
 				if(true || access_allowed(photo.event_id, token)) {
 //				snoop::log(snoop::info) << "User " << authorisations[token].name << " viewing photo " << photo.filename << snoop::flush;
 //				snoop::log.sync_with_server();
-					send_video(request, response, photo);
+					send_video(request, response, photo, vtype);
 					}
 				else {
 					terr << logstamp(&request) << "access to video denied" << std::endl;
@@ -710,10 +730,10 @@ void Server::handle_default(const httplib::Request& request, httplib::Response& 
 			send_file(request, response, fn);
 			}
 		}
-	catch(nlohmann::json::exception& jex) {
+	catch(nlohmann::detail::type_error& jex) {
 		terr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		}
-	catch(nlohmann::detail::type_error& jex) {
+	catch(nlohmann::json::exception& jex) {
 		terr << logstamp(&request) << "server exception, aborting request: " << jex.what() << std::endl;
 		}
 	}
@@ -788,48 +808,120 @@ void Server::send_photo(const httplib::Request& request, httplib::Response& resp
 		}
 	}
 
-void Server::send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo) const
-	{
-	std::string file_to_send=photo.filename;
-	terr << logstamp(&request) << "request for video " << file_to_send << std::endl;
-	// Check for presence of converted file.
-	// FIXME: adapt to user preference for bitrate.
-	boost::filesystem::path path(file_to_send);
-	boost::filesystem::path path16m;
-	path16m =path.parent_path();
-	path16m/="16M";
-	path16m/=path.filename();
-	if(boost::filesystem::exists(path16m)) {
-		file_to_send=path16m.string();
-		terr << logstamp(&request) << "diverting to re-encoded version " << file_to_send << std::endl;
-		}
-	
-	response.set_header("Content-Type", "video/mp4");
-	auto handler = new StreamHandler(file_to_send);
+// void Server::send_m3u8(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo) const
+// 	{
+// 	terr << logstamp(&request) << "request for video " << photo.filename << std::endl;
+// 
+// 	boost::filesystem::path path(photo.filename);
+// 	auto dir =path.parent_path();
+// 	std::string m3u8name = dir.c_str()+std::string("/index.m3u8");
+// 	std::ifstream ifs;
+// 	ifs.open(m3u8name, std::ifstream::in);
+// 	
+// 	if(ifs) {
+// 		ifs.seekg(0, std::ios::end);
+// 		size_t length=ifs.tellg();
+// 		ifs.seekg(0, std::ios::beg);
+// 		char* buffer=new char[length];
+// 		ifs.rdbuf()->sgetn(buffer, length);
+// //		response << "HTTP/1.1 200 OK\r\nContent-Length: " << length << "\r\n\r\n" << ifs.rdbuf();
+// 		ifs.close();
+// 		response.set_header("Content-Type", "application/x-mpegURL");
+// 		terr << logstamp(&request) << "sending m3u8 " << m3u8name << std::endl;
+// 		delete [] buffer;
+// 		}
+// 	else {
+// 		terr << logstamp(&request) << "file not found " << m3u8name << std::endl;
+// 		std::string ret = "{\"status\": \"notfound\"}\n";
+// 		response.set_content(ret, "application/json");
+// 		return;
+// 		}
+// 	}
 
-	auto chunk_size = handler->chunk_size;
-	response.set_content_provider(
-		handler->size,
-		"video/mp4",
-		[handler,chunk_size,this,&request](uint64_t offset, uint64_t length, httplib::DataSink& out)  {
-			// Serve a chunk of data, of maximal size chunk_size.
-			handler->vf.seekg(offset, std::ios::beg);
-			handler->vf.read(handler->data.data(), std::min(chunk_size, length));
-			uint64_t num=handler->vf.gcount();
-			out.write(handler->data.data(), num);
-			return true;
-			},
-		[handler,this,&request]() {
+void Server::send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo,
+								const std::string& vtype) const
+	{
+	terr << logstamp(&request) << "request for video " << photo.filename << std::endl;
+	// Check for presence of converted file.
+	boost::filesystem::path path(photo.filename);
+	boost::filesystem::path dir, stem;
+	dir =path.parent_path();
+	stem=path.stem();
+
+	generate_hls_for_video(request, photo);
+	
+	// FIXME: sanitise vtype.
+	size_t ll=vtype.size();
+	std::string file_to_send = dir.c_str()+std::string("/")+stem.c_str()+std::string("/")+vtype;
+	if(vtype.substr(ll-5)==".m3u8") {
+		response.set_header("Content-Type", "application/x-mpegURL");
+		terr << logstamp(&request) << "sending m3u8 " << file_to_send << std::endl;
+		send_file(request, response, file_to_send);
+		}
+	else {
+		terr << logstamp(&request) << "sending ts file " << file_to_send << std::endl;
+		auto handler = new StreamHandler(file_to_send);
+		std::string mime_type="video/mp4";
+		if(path.extension()==".ts") mime_type = "video/mp2t";
+
+		auto chunk_size = handler->chunk_size;
+		response.set_content_provider(
+			handler->size,
+			mime_type.c_str(),
+			[handler,chunk_size,this,&request](uint64_t offset, uint64_t length, httplib::DataSink& out)  {
+				// Serve a chunk of data, of maximal size chunk_size.
+				handler->vf.seekg(offset, std::ios::beg);
+				handler->vf.read(handler->data.data(), std::min(chunk_size, length));
+				uint64_t num=handler->vf.gcount();
+				out.write(handler->data.data(), num);
+				return true;
+				},
+			[handler,this,&request]() {
 			// Connection has closed, cleanup.
 			delete handler;
 			terr << logstamp(&request) << "closing connection" << std::endl;
 			});
+		}
 	}
 
 bool Server::file_exists(const std::string& filename) const
 	{
 	std::ifstream infile(filename);
 	return infile.good();
+	}
+
+bool Server::have_hls_for_video(const Database::Photo& photo) const
+	{
+//	terr << logstamp(&request) << "check presence of HLS for " << photo.filename << std::endl;
+	boost::filesystem::path path(photo.filename);
+	boost::filesystem::path dir, stem;
+	dir =path.parent_path();
+	stem=path.stem();
+
+	// FIXME: extend this check to be more rigorous, and only return true if all HLS
+	// files have been generated.
+	std::string file_to_check = dir.c_str()+std::string("/")+stem.c_str()+std::string("/index.m3u8");
+	std::ifstream tst(file_to_check);
+
+	return tst.is_open();
+	}
+
+bool Server::generate_hls_for_video(const httplib::Request& request, const Database::Photo& photo) const
+	{
+	terr << logstamp(&request) << "generate HLS for " << photo.filename << std::endl;
+
+	boost::filesystem::path path(photo.filename);
+	boost::filesystem::path dir, stem;
+	dir =path.parent_path();
+	stem=path.stem();
+
+	std::string hls_dir = dir.c_str()+std::string("/")+stem.c_str()+std::string("/");
+	boost::filesystem::create_directory(hls_dir);
+	std::string command = "video2hls --no-mp4 --output "+hls_dir+" "+photo.filename;
+	terr << logstamp(&request) << "running " << command << std::endl;
+//	auto res = std::system(command);
+	
+	return true;
 	}
 
 cv::Mat Server::apply_orientation(cv::Mat image, int orientation) const
@@ -874,12 +966,20 @@ void Server::create_thumbnail(const httplib::Request& request, const Database::P
 	if(image.data==0)
 		throw std::logic_error("Photo "+photo.filename+" cannot be read");
 
+	// Crop to square.
 	if(image.cols>image.rows) {
-	  cv::resize(image,image,cv::Size(360, (360*image.rows)/image.cols), cv::INTER_AREA);
+		int margin = (image.cols-image.rows)/2;
+		image = image( cv::Range(0, image.rows), cv::Range(margin, margin+image.rows) );
 		}
-	else {
-	  cv::resize(image,image,cv::Size((360*image.cols)/image.rows, 360), cv::INTER_AREA);
+	else if(image.cols<image.rows) {
+		int margin = (image.rows-image.cols)/2;
+		image = image( cv::Range(margin, margin+image.cols), cv::Range(0, image.cols) );
 		}
+
+	terr << logstamp(&request) << image.cols << " x " << image.rows << std::endl;
+
+	// Resize and orient.
+	cv::resize(image,image,cv::Size(360, 360), cv::INTER_AREA);
 	image = apply_orientation(image, photo.orientation);
 
 	cv::imwrite(loc, image);

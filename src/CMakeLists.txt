@@ -8,6 +8,12 @@ endif()
 SET(CMAKE_CXX_STANDARD 14)
 
 
+find_package(PkgConfig)
+pkg_check_modules(SQLITE_MODERN_CPP REQUIRED sqlite_modern_cpp)
+if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/sqlite_modern_cpp/hdr/sqlite_modern_cpp.h")
+  message(FATAL_ERROR "No 'external/sqlite_modern_cpp/hdr/sqlite_modern_cpp.h' file present; are you sure you checked out the git submodules with\n    git submodule update --init --recursive\n?")
+endif()
+  
 find_package(OpenCV REQUIRED)
 find_library(SCRYPT  scrypt required)
 find_library(SQLITE3 sqlite3 required)
@@ -52,7 +58,11 @@ FILE(GLOB FANCYBOX "${PROJECT_SOURCE_DIR}/static/fancybox/*.png"
                    "${PROJECT_SOURCE_DIR}/static/fancybox/*.js")
 FILE(GLOB FANCYBOX_HELPERS "${PROJECT_SOURCE_DIR}/static/fancybox/helpers/*")
 
+set(HELPERS
+  video2hls.py
+  )
 install(PROGRAMS ${PROJECT_BINARY_DIR}/shotweb DESTINATION bin)
+install(PROGRAMS ${HELPERS}       DESTINATION bin)
 install(FILES ${HTML_CSS_JS}      DESTINATION share/shotweb)
 install(FILES ${FANCYBOX}         DESTINATION share/shotweb/fancybox)
 install(FILES ${FANCYBOX_HELPERS} DESTINATION share/shotweb/fancybox/helpers)

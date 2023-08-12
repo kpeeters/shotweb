@@ -245,6 +245,9 @@ div#single_shot {
 	 text-align: center;
 	 opacity: 0;
 }
+div#single_shot video {
+	display: none;
+}
 div#slide_controls {
 	 display: none;
 	 position: absolute;

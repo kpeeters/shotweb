@@ -11,7 +11,7 @@ var fill_event_display = function(data) {
 		      $("#event").append("<div class='video'>"
                                +"<div class='strip_upper'></div>"
                                +"<div class='strip_lower'></div>"                               
-									    +"<a class='fancybox videobox' rel='group' href='video?id="+this["id"]+"'>"
+									    +"<a class='fancybox videobox' rel='group' href='video/"+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='video_thumbnail_"
 									    +this["id"]+"' />"
 									    +"</a>"
@@ -30,7 +30,8 @@ var fill_event_display = function(data) {
 		  container: $("#event_segment")
 	 });
 	 $(".fancybox.photobox").on('click', function(ev) {
-		  ev.preventDefault();
+		 ev.preventDefault();
+		 ev.stopPropagation();
 		  var img=$(this).attr('href');
 		  $("#single_shot img").unbind('load');
 		  $("#spinner").show();
@@ -45,8 +46,44 @@ var fill_event_display = function(data) {
 				});
 				
 		  });
-		  $("#single_shot img").attr('src', img);
+		 $("#single_shot .align_helper").css({"display": "inline-block"});
+		 $("#single_shot img").css({"display": "inline-block"});		
+		 $("#single_shot video").css({"display": "none"});
+		 $("#single_shot img").attr('src', img);
 	 });
+	$(".fancybox.videobox").on('click', function(ev) {
+		console.log("Clicked on video");
+		ev.preventDefault();
+		ev.stopPropagation();		
+		var m8u3=$(this).attr('href')+"/index.m3u8";
+		console.log(m8u3);
+		$("#single_shot img").unbind('load');
+		$("#single_shot").show();
+		$("#single_shot").css({'z-index': 2});
+		$("#single_shot").animate({
+			opacity: 1.0
+		}, 500, "linear", function() {
+		});
+		$("#single_shot .align_helper").css({"display": "none"});
+		$("#single_shot video").attr('poster', 'video_thumbnail_2792');
+		$("#single_shot img").css({"display": "none"});		
+		$("#single_shot video").css({"display": "block"});
+
+		var video = $("#single_shot video")[0];
+		console.log("video element", video);
+		var videoSrc = m8u3;
+		if (Hls.isSupported()) {
+			console.log("Using HLS library");
+			var hls = new Hls();
+			hls.loadSource(videoSrc);
+			hls.attachMedia(video);
+		}
+		else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+			console.log("Using HLS native");			
+			video.src = videoSrc;
+		}
+
+	});
     var next_photo = function() {
 		  // Find the next photo.
 		  var this_photo     = $("#single_shot img").attr("src");
@@ -175,7 +212,7 @@ var load_photos = function(event_id) {
 				$("#spinner").hide();
 				$("#event_header").html(data["name"]);
 				if(data["photos"].length==0) 
-					 window.location="/";
+					 window.location="login.html";
 				else
 					 fill_event_display(data["photos"]);
 		  },
@@ -198,7 +235,7 @@ $(document).ready( function() {
     if(qd["id"])
 	     load_photos(qd["id"][0]);
     else
-        window.location="/";
+        window.location="login.html";
 
     $("#access").on('click', function(e) {
         e.preventDefault();

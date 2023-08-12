@@ -30,6 +30,8 @@ Database::Event Database::get_event(int event_id)
 
 std::vector<Database::Event> Database::get_events(int event_id)
 	{
+	std::lock_guard<std::mutex> lock(db_mutex);
+	
 	std::vector<Database::Event> results;
 
 	std::ostringstream ss;
@@ -78,6 +80,8 @@ std::vector<Database::Event> Database::get_events(int event_id)
 
 Database::Photo Database::get_photo(int photo_id) 
 	{
+	std::lock_guard<std::mutex> lock(db_mutex);
+
 	std::ostringstream ss;
 	ss << "select id,filename,orientation,event_id from PhotoTable where id='" << photo_id << "'";
 	std::string query = ss.str();
@@ -98,6 +102,8 @@ Database::Photo Database::get_photo(int photo_id)
 
 Database::Photo Database::get_video(int video_id) 
 	{
+	std::lock_guard<std::mutex> lock(db_mutex);
+
 	std::ostringstream ss;
 	ss << "select id,filename,event_id from VideoTable where id='" << video_id << "'";
 	std::string query = ss.str();
@@ -119,6 +125,8 @@ Database::Photo Database::get_video(int video_id)
 
 std::vector<Database::Photo> Database::get_photos(int event_id)
 	{
+	std::lock_guard<std::mutex> lock(db_mutex);
+
 	std::vector<Database::Photo> results;
 
 	std::ostringstream ss;

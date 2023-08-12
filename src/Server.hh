@@ -32,7 +32,8 @@ class Server : public httplib::Server {
 		void send_file(const httplib::Request& request, httplib::Response& response, const std::string& fn) const;
 		void send_thumbnail(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo, int max_size) const;
 		void send_photo(const httplib::Request& request, httplib::Response& response, const Database::Photo&) const;
-		void send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo&) const;		
+		void send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo&,
+							 const std::string& vtype) const;		
 		bool file_exists(const std::string&) const;
 
 		// Data structures for user -> event(s) authorisation mapping. These will 
@@ -88,6 +89,14 @@ class Server : public httplib::Server {
 
 		// Correct orientation of the image given the orientation flag.
 		cv::Mat     apply_orientation(cv::Mat, int orientation) const;
+
+		// Given a video entry, check if the HLS version is present.
+		bool        have_hls_for_video(const Database::Photo& photo) const;
+
+		// Generate HLS version of given video entry. This will put the entry
+		// on the stack of entries to be generated, and start the generation
+		// thread if it isn't running.
+		bool        generate_hls_for_video(const httplib::Request& request, const Database::Photo& photo) const;
 		
 		Database db;
 //		std::vector<Database::Event> events;
