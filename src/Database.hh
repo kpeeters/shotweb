@@ -64,6 +64,9 @@ class Database {
 		sqlite::sqlite_config             config;
 		std::unique_ptr<sqlite::database> db;
 
+                int inotfd = -1;
+                int watch_desc = -1;
+  
 		std::string oldroot, newroot;
 };
 

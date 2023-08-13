@@ -15,10 +15,20 @@ Database::Database(const std::string& name, const std::string& oldroot, const st
 	// notificator, re-create the database object so it closes/reopens the
 	// database and invalidates caches.
 	db = std::make_unique<sqlite::database>(name, config);
+
+	// Setup an inotify watch to monitor changes to the database, so that
+	// we can re-open it.
+	inotfd = inotify_init();
+	watch_desc = inotify_add_watch(inotfd, name.c_str(), IN_MODIFY);
+
+	// size_t bufsiz = sizeof(struct inotify_event) + PATH_MAX + 1;
+	// struct inotify_event* event = malloc(bufsiz);
+	
 	}
 
 Database::~Database()
 	{
+	  
 	}
 
 Database::Event Database::get_event(int event_id) 
