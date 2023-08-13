@@ -11,6 +11,7 @@
 #include <vector>
 #include <sqlite_modern_cpp.h>
 #include <mutex>
+#include <unistd.h>
 
 /// Class wrapping a Shotwell photo database, hiding all SQL
 /// implementation details and allowing for simple retrieval of events
@@ -22,6 +23,10 @@ class Database {
 		Database(const std::string& db, const std::string& oldroot, const std::string& newroot);
 		~Database();
 
+  /// Open or re-open the database (the latter for when the database
+  /// has changed underneath us. Always opens in read-only mode.
+  void open_or_reopen();
+  
 		/// Descriptor for a shotwell event.
 		class Event {
 			public:
@@ -58,7 +63,13 @@ class Database {
 		/// Retrieve a single video descriptor given its id.
 		Photo              get_video(int video_id);
 
+  /// Do a blocking read with time-out on the inotify file descriptor,
+  /// return true when database has changed, false when timeout.
+  bool watch_for_changes();
+  
 	private:
+  std::string name;
+  
 		mutable std::mutex db_mutex;
 		
 		sqlite::sqlite_config             config;

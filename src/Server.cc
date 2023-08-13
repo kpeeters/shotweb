@@ -69,6 +69,7 @@ Server::Server(const nlohmann::json& config)
 			 handle_default(request, response);
 			 }
 		 );
+
 	}
 
 Server::~Server()
@@ -1037,11 +1038,25 @@ void Server::send_thumbnail(const httplib::Request& request, httplib::Response& 
 
 void Server::start() 
 	{
+	// Spawn thread to watch changes to database file.
+	std::thread watcher( [this]() {
+			       for(;;) {
+				 if(db.watch_for_changes()) {
+				   db.open_or_reopen();
+				 } else {
+				   break;
+				 }
+			       }
+			     });
+
 	int port=config.value("port", 80);
 	terr << logstamp() << "starting server on port " << port << std::endl;
 	set_write_timeout(10,0);
 	set_read_timeout(10,0);	
 	if(listen("localhost", port)==false)
 		terr << logstamp() << "failed to bind to port " << port << std::endl;
+
+	std::cerr << "Server::start: joining watcher thread..." << std::endl;
+	watcher.join();
 	}
 

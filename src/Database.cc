@@ -6,20 +6,19 @@
 #include <sstream>
 #include <sys/inotify.h>
 
-Database::Database(const std::string& name, const std::string& oldroot, const std::string& newroot)
-	: oldroot(oldroot), newroot(newroot)
+Database::Database(const std::string& name_, const std::string& oldroot, const std::string& newroot)
+  : name(name_), oldroot(oldroot), newroot(newroot)
 	{
 	config.flags=sqlite::OpenFlags::READONLY;
 
 	// FIXME: when we find a database modification through the file system
 	// notificator, re-create the database object so it closes/reopens the
 	// database and invalidates caches.
-	db = std::make_unique<sqlite::database>(name, config);
+	open_or_reopen();
 
 	// Setup an inotify watch to monitor changes to the database, so that
 	// we can re-open it.
 	inotfd = inotify_init();
-	watch_desc = inotify_add_watch(inotfd, name.c_str(), IN_MODIFY);
 
 	// size_t bufsiz = sizeof(struct inotify_event) + PATH_MAX + 1;
 	// struct inotify_event* event = malloc(bufsiz);
@@ -30,6 +29,68 @@ Database::~Database()
 	{
 	  
 	}
+
+void Database::open_or_reopen()
+{
+  std::lock_guard<std::mutex> lock(db_mutex);
+  std::cerr << "Database::open_or_reopen" << std::endl;
+  db = std::make_unique<sqlite::database>(name, config);
+}
+
+bool Database::watch_for_changes()
+{
+  std::cerr << "Database::Database: adding inotify for " << name << std::endl;
+  watch_desc = inotify_add_watch(inotfd, name.c_str(), IN_MODIFY | IN_MOVE_SELF | IN_ATTRIB | IN_CREATE | IN_DELETE);
+  if(watch_desc==-1) {
+    throw std::logic_error("Database::Database: cannot watch "+name+", does it exist?");
+  }
+  
+  size_t bufsiz = 1024;
+  char buf[bufsiz];
+
+  int i=0;
+  int len=0;
+  while(len==0) {
+    std::cerr << "Database::watch_for_changes: read" << std::endl;
+    len = read(inotfd, buf, bufsiz);
+    std::cerr << "Database::watch_for_changes: event size " << len << std::endl;
+    if(len>0) {
+      while(i<len) {
+	struct inotify_event *event = (struct inotify_event *) &buf[i];
+	
+	if ((event->mask & IN_CREATE) != 0) {
+	  std::cerr << "Event: create" << std::endl;
+	}
+	else if ((event->mask & IN_DELETE) != 0) {
+	  std::cerr << "Event: delete" << std::endl;
+	}
+	else if ((event->mask & IN_MODIFY) != 0) {
+	std::cerr << "Event: modify" << std::endl;
+	}
+	else if ((event->mask & IN_MOVE_SELF) != 0) {
+	  std::cerr << "Event: move_self" << std::endl;
+	}
+	else if ((event->mask & IN_ATTRIB) != 0) {
+	  std::cerr << "Event: attrib" << std::endl;
+	}
+	else {
+	  std::cerr << "Unknown event: " << event->mask << std::endl;
+	}
+	
+	i += sizeof (struct inotify_event) + event->len;
+      }
+      // It looks like we do not have to remove the watch, and we can also
+      // safely add it again.
+      // https://stackoverflow.com/questions/13409843/inotify-vim-modification
+      
+      //if(inotify_rm_watch(inotfd, watch_desc)==-1)
+      //throw std::logic_error("Database::watch_for_changes: cannot unregister watch.");
+      
+      return true;
+    }
+  }
+  return false;
+}
 
 Database::Event Database::get_event(int event_id) 
 	{
