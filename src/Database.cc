@@ -126,6 +126,10 @@ std::vector<Database::Event> Database::get_events(int event_id)
 				event.comment=comment;
 				size_t numpos = primary_source_id.find("0");
 				event.cover_photo_id = std::stoul(primary_source_id.substr(numpos), 0, 16);
+				// The `primary_source_id` can be a thumbnail name, or in the case of a video
+				// it will be a name of the form `video-....`.
+				if(primary_source_id.substr(0, 5)=="thumb") event.cover_is_photo=true;
+				else                                        event.cover_is_photo=false;
 				results.push_back(event);
 		};
 
@@ -202,7 +206,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	std::ostringstream ss;
 	ss << "select id,filename,orientation,event_id from PhotoTable where event_id='" << event_id << "' "
-		<< "order by time_created, timestamp";
+		<< "order by timestamp, time_created";
 	std::string query = ss.str();
 
 	(*db) << query
@@ -219,7 +223,7 @@ std::vector<Database::Photo> Database::get_photos(int event_id)
 
 	ss.str("");
 	ss << "select id,filename,event_id from VideoTable where event_id='" << event_id << "' "
-		<< "order by time_created, timestamp";
+		<< "order by timestamp, time_created";
 	query = ss.str();
 	std::cerr << query << std::endl;
 	(*db) << query

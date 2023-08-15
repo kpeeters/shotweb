@@ -52,9 +52,11 @@ var fill_event_display = function(data) {
 		 $("#single_shot img").attr('src', img);
 	 });
 	$(".fancybox.videobox").on('click', function(ev) {
-		console.log("Clicked on video");
+		console.log("Clicked on video", $(this));
 		ev.preventDefault();
-		ev.stopPropagation();		
+		ev.stopPropagation();
+		var href = $(this).attr('href');
+		var thumbnail = "video_thumbnail_"+href.substring(href.lastIndexOf('/')+1)
 		var m8u3=$(this).attr('href')+"/index.m3u8";
 		console.log(m8u3);
 		$("#single_shot img").unbind('load');
@@ -65,7 +67,7 @@ var fill_event_display = function(data) {
 		}, 500, "linear", function() {
 		});
 		$("#single_shot .align_helper").css({"display": "none"});
-		$("#single_shot video").attr('poster', 'video_thumbnail_2792');
+		$("#single_shot video").attr('poster', thumbnail);
 		$("#single_shot img").css({"display": "none"});		
 		$("#single_shot video").css({"display": "block"});
 

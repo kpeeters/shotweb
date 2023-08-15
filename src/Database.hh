@@ -34,6 +34,7 @@ class Database {
 				std::string name;
 				std::string primary_photo_filename;
 				int         cover_photo_id;
+				bool        cover_is_photo;
 				std::string comment;
 				uint32_t    start_timestamp;
 				uint32_t    end_timestamp;

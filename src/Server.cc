@@ -613,7 +613,12 @@ void Server::handle_default(const httplib::Request& request, httplib::Response& 
 					for(unsigned i=0; i<events.size(); ++i)
 						if(events[i].id==event_num)
 							event=events[i];
-					Database::Photo cover_photo=db.get_photo(event.cover_photo_id);
+					Database::Photo cover_photo;
+					if(event.cover_is_photo) 
+						cover_photo=db.get_photo(event.cover_photo_id);
+					else
+						cover_photo=db.get_video(event.cover_photo_id);
+					
 					send_thumbnail(request, response, cover_photo, 300);
 					}
 				catch(std::range_error& ex) {
@@ -842,7 +847,7 @@ void Server::send_photo(const httplib::Request& request, httplib::Response& resp
 void Server::send_video(const httplib::Request& request, httplib::Response& response, const Database::Photo& photo,
 								const std::string& vtype) const
 	{
-	terr << logstamp(&request) << "request for video " << photo.filename << std::endl;
+	terr << logstamp(&request) << "request for video " << photo.filename << " vtype " << vtype << std::endl;
 	// Check for presence of converted file.
 	boost::filesystem::path path(photo.filename);
 	boost::filesystem::path dir, stem;

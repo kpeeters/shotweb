@@ -14,7 +14,7 @@ if(NOT EXISTS "${CMAKE_SOURCE_DIR}/external/sqlite_modern_cpp/hdr/sqlite_modern_
   message(FATAL_ERROR "No 'external/sqlite_modern_cpp/hdr/sqlite_modern_cpp.h' file present; are you sure you checked out the git submodules with\n    git submodule update --init --recursive\n?")
 endif()
   
-find_package(OpenCV REQUIRED)
+find_package(OpenCV 4.5 REQUIRED)
 find_library(SCRYPT  scrypt required)
 find_library(SQLITE3 sqlite3 required)
 message("-- Found sqlite3 at ${SQLITE3}")
