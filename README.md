@@ -153,34 +153,27 @@ administrator password (do this immediately!).
 
     
     
-Movie re-encoding
+Video re-encoding
 -----------------
 
-Shotweb will by default serve video files as-is, without transcoding
-to a different bitrate. That works fine if you are on a fast
-connection (e.g. when you have shotweb running on your home network),
-but it may be too much on remote connections. 
+Shotweb will automatically convert all videos so they adapt to the
+available bandwidth of the viewer, using HLS; see
 
-Shotweb will automatically look in a subdirectory `16M` of the
-directory in which the video file is stored, and if a corresponding
-file is available there, it will serve that. For now, you will have to
-do conversion yourself.  To re-encode a video file for a maximal
-bitrate of 16M, do something like::
+  [https://www.exoscale.com/syslog/self-hosted-videos/]
 
-    ffmpeg -i IMG_0841.MOV -c:v libx264 -movflags faststart \
-           -crf 23 -maxrate 16M -bufsize 32M \
-           -vf "scale=960:-1" 16M/IMG_0841.MOV
+for more info. This uses the `video2hls` script taken from
 
-The server will automatically pick up when there is a re-encoded movie
-in the `16M` subdirectory available; you do not have to do anything
-else.
+  [https://github.com/vincentbernat/video2hls]
+  
+Video conversion is triggered by the shotweb server automatically, 
+and it keeps a queue of videos to convert.
+  
+**WARNING:** This is a new feature; if you click on a video the
+conversion will start in the background, but you will need to reload
+the event page (after the conversion has completed) to be able to view
+the video.
 
-See [https://slhck.info/video/2017/03/01/rate-control.html] for other
-useful info on the various ways to reduce bandwidth with ffmpeg
-options.
 
-*TODO*: use HLS [https://www.exoscale.com/syslog/self-hosted-videos/]
-*TODO*: only serve video if auth token is present
 
 Used libraries 
 --------------
