@@ -42,7 +42,7 @@ Server::StreamHandler::StreamHandler(std::string fn)
 
 Server::Server(const nlohmann::json& config)
 	: db(config.value("photo.db", ""), config.value("old_root", ""), config.value("new_root", "")),
-	  config(config)
+	  config(config), hls_thread(&Server::hls_thread_run, this)
 	{
 	// Read configuration.
 	
@@ -494,6 +494,12 @@ void Server::handle_json(const httplib::Request& request, httplib::Response& res
 					photo["id"]=it->id;
 					photo["filename"]=it->filename;
 					photo["is_video"]=it->is_video;
+					if(it->is_video) {
+						photo["converting"]=!have_hls_for_video(*it);
+						}
+					else {
+						photo["converting"]=false;
+						}
 					jphotos.push_back(photo);
 					++it;
 					}
@@ -854,7 +860,19 @@ void Server::send_video(const httplib::Request& request, httplib::Response& resp
 	dir =path.parent_path();
 	stem=path.stem();
 
-	generate_hls_for_video(request, photo);
+	if(!have_hls_for_video(photo)) {
+		// If this video is not yet in the queue for conversion, add it.
+		std::lock_guard<std::mutex> lock(hls_mutex);
+		for(const auto& qe: hls_queue) {
+			if(qe.filename == photo.filename) {
+				terr << logstamp(&request) << "already converting " << photo.filename << std::endl;
+				return;
+				}
+			}
+		terr << logstamp(&request) << "adding " << photo.filename << " to conversion queue" << std::endl;
+		hls_queue.push_front(photo);
+		return;
+		}
 	
 	// FIXME: sanitise vtype.
 	size_t ll=vtype.size();
@@ -912,9 +930,44 @@ bool Server::have_hls_for_video(const Database::Photo& photo) const
 	return tst.is_open();
 	}
 
-bool Server::generate_hls_for_video(const httplib::Request& request, const Database::Photo& photo) const
+void Server::hls_thread_run()
 	{
-	terr << logstamp(&request) << "generate HLS for " << photo.filename << std::endl;
+	// This function runs forever, on a separate thread, and watches the
+	// `hls_queue` for videos that need converting to HLS format. Will
+	// then, synchronously, call the `video2hls.py` script on each of
+	// them.
+	bool was_empty=false;
+	int  empty_loops=0;
+	for(;;) {
+		sleep(1);
+		std::lock_guard<std::mutex> lock(hls_mutex);
+		if(hls_queue.size()>0) {
+			was_empty=false;
+			terr << logstamp(0) << "videos to process on HLS queue: " << hls_queue.size() << std::endl;			
+			Database::Photo conv = hls_queue.front();
+			hls_queue.pop_front();
+			generate_hls_for_video(conv);
+			}
+		else {
+			if(!was_empty) {
+				was_empty=true;
+				empty_loops=0;
+				terr << logstamp(0) << "nothing left on HLS queue." << std::endl;
+				}
+			else {
+				++empty_loops;
+				if(empty_loops==10) {
+					// Scan videos and put all for conversion.
+					// FIXME: TODO
+					}
+				}
+			}
+		}
+	}
+
+bool Server::generate_hls_for_video(const Database::Photo& photo) const
+	{
+	terr << logstamp(0) << "generate HLS for " << photo.filename << std::endl;
 
 	boost::filesystem::path path(photo.filename);
 	boost::filesystem::path dir, stem;
@@ -923,9 +976,10 @@ bool Server::generate_hls_for_video(const httplib::Request& request, const Datab
 
 	std::string hls_dir = dir.c_str()+std::string("/")+stem.c_str()+std::string("/");
 	boost::filesystem::create_directory(hls_dir);
-	std::string command = "video2hls --no-mp4 --output "+hls_dir+" "+photo.filename;
-	terr << logstamp(&request) << "running " << command << std::endl;
-//	auto res = std::system(command);
+	std::string command = "video2hls.py --no-mp4 --output-overwrite --output "+hls_dir+" "+photo.filename;
+	terr << logstamp(0) << "running " << command << std::endl;
+	auto res = std::system(command.c_str());
+	terr << logstamp(0) << "command " << command << " exited with code " << res << std::endl;
 	
 	return true;
 	}

@@ -90,13 +90,16 @@ class Server : public httplib::Server {
 		// Correct orientation of the image given the orientation flag.
 		cv::Mat     apply_orientation(cv::Mat, int orientation) const;
 
+		// Start the thread which takes care of converting videos to HLS.
+		void        hls_thread_run();
+		
 		// Given a video entry, check if the HLS version is present.
 		bool        have_hls_for_video(const Database::Photo& photo) const;
 
 		// Generate HLS version of given video entry. This will put the entry
 		// on the stack of entries to be generated, and start the generation
 		// thread if it isn't running.
-		bool        generate_hls_for_video(const httplib::Request& request, const Database::Photo& photo) const;
+		bool        generate_hls_for_video(const Database::Photo& photo) const;
 		
 		Database db;
 //		std::vector<Database::Event> events;
@@ -121,4 +124,9 @@ class Server : public httplib::Server {
 		};
 		std::map<std::function<std::string(uint64_t)>, StreamHandler> stream_handlers;
 
+
+		// Conversion thread and queue for videos.
+		std::thread                         hls_thread;
+		mutable std::mutex                  hls_mutex;
+		mutable std::deque<Database::Photo> hls_queue;
 };

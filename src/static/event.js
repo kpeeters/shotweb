@@ -6,14 +6,19 @@ var fill_event_display = function(data) {
 
 	 $.each(data, function() {
 		  if(this["event"]=="")
-				this["event"]="&nbsp;";
+			  this["event"]="&nbsp;";
+		 var addclass=""
+		 if(this["converting"]) {
+			 addclass=" converting"
+		 }
         if(this["is_video"]) {
 		      $("#event").append("<div class='video'>"
                                +"<div class='strip_upper'></div>"
                                +"<div class='strip_lower'></div>"                               
-									    +"<a class='fancybox videobox' rel='group' href='video/"+this["id"]+"'>"
+									    +"<a class='fancybox videobox"+addclass+"' rel='group' href='video/"+this["id"]+"'>"
 									    +"<img width=200 class='lazy' data-original='video_thumbnail_"
 									    +this["id"]+"' />"
+										 +"<div class='spinner'><div></div><div></div><div></div><div></div></div>"
 									    +"</a>"
 									    +"</div>");
         } else {
@@ -59,30 +64,45 @@ var fill_event_display = function(data) {
 		var thumbnail = "video_thumbnail_"+href.substring(href.lastIndexOf('/')+1)
 		var m8u3=$(this).attr('href')+"/index.m3u8";
 		console.log(m8u3);
-		$("#single_shot img").unbind('load');
-		$("#single_shot").show();
-		$("#single_shot").css({'z-index': 2});
-		$("#single_shot").animate({
-			opacity: 1.0
-		}, 500, "linear", function() {
-		});
-		$("#single_shot .align_helper").css({"display": "none"});
-		$("#single_shot video").attr('poster', thumbnail);
-		$("#single_shot img").css({"display": "none"});		
-		$("#single_shot video").css({"display": "block"});
-
-		var video = $("#single_shot video")[0];
-		console.log("video element", video);
-		var videoSrc = m8u3;
-		if (Hls.isSupported()) {
-			console.log("Using HLS library");
-			var hls = new Hls();
-			hls.loadSource(videoSrc);
-			hls.attachMedia(video);
-		}
-		else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-			console.log("Using HLS native");			
-			video.src = videoSrc;
+		
+		if($(this).hasClass("converting")) {
+			alert("Video not finished converting yet, try later.");
+			$.ajax({
+				url: m8u3,
+				type: "GET",
+				success: function(data, status) {
+					console.log("video conversion started");
+				},
+				error: function(xhr, desc, err) {
+					console.log("error starting video conversion");
+				}
+			});
+		} else {
+			$("#single_shot img").unbind('load');
+			$("#single_shot").show();
+			$("#single_shot").css({'z-index': 2});
+			$("#single_shot").animate({
+				opacity: 1.0
+			}, 500, "linear", function() {
+			});
+			$("#single_shot .align_helper").css({"display": "none"});
+			$("#single_shot video").attr('poster', thumbnail);
+			$("#single_shot img").css({"display": "none"});		
+			$("#single_shot video").css({"display": "block"});
+			
+			var video = $("#single_shot video")[0];
+			console.log("video element", video);
+			var videoSrc = m8u3;
+			if (Hls.isSupported()) {
+				console.log("Using HLS library");
+				var hls = new Hls();
+				hls.loadSource(videoSrc);
+				hls.attachMedia(video);
+			}
+			else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+				console.log("Using HLS native");			
+				video.src = videoSrc;
+			}
 		}
 
 	});

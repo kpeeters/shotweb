@@ -33,13 +33,13 @@ Database::~Database()
 void Database::open_or_reopen()
 {
   std::lock_guard<std::mutex> lock(db_mutex);
-  std::cerr << "Database::open_or_reopen" << std::endl;
+  // std::cerr << logstamp(0) << "Database::open_or_reopen" << std::endl;
   db = std::make_unique<sqlite::database>(name, config);
 }
 
 bool Database::watch_for_changes()
 {
-  std::cerr << "Database::Database: adding inotify for " << name << std::endl;
+// std::cerr << "Database::Database: adding inotify for " << name << std::endl;
   watch_desc = inotify_add_watch(inotfd, name.c_str(), IN_MODIFY | IN_MOVE_SELF | IN_ATTRIB | IN_CREATE | IN_DELETE);
   if(watch_desc==-1) {
     throw std::logic_error("Database::Database: cannot watch "+name+", does it exist?");
@@ -51,9 +51,9 @@ bool Database::watch_for_changes()
   int i=0;
   int len=0;
   while(len==0) {
-    std::cerr << "Database::watch_for_changes: read" << std::endl;
+	  // std::cerr << "Database::watch_for_changes: read" << std::endl;
     len = read(inotfd, buf, bufsiz);
-    std::cerr << "Database::watch_for_changes: event size " << len << std::endl;
+    // std::cerr << "Database::watch_for_changes: event size " << len << std::endl;
     if(len>0) {
       while(i<len) {
 	struct inotify_event *event = (struct inotify_event *) &buf[i];
